@@ -17,8 +17,8 @@ const getUsers = async ({
   page = Math.max(1, !isNaN(page) ? Number(page) : 1);
   const offset = (page - 1) * limit;
 
-  const user_rows_where = [];
-  const user_rows_value = [];
+  const user_rows_where = ["a.is_archived = ?"];
+  const user_rows_value = [false];
 
   if (account_id) {
     user_rows_where.push("a.account_id != ?");
