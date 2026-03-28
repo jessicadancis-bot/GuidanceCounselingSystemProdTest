@@ -2417,6 +2417,7 @@ const getSessionAttachments = async ({
   session_id,
   connection = pool,
 }) => {
+  console.log("???")
   session_id = normalize(session_id);
 
   const validations = [
@@ -2453,22 +2454,22 @@ const getSessionAttachments = async ({
     );
   }
 
-  const [case_collaborators_rows] = await connection.query(
-    `
-    SELECT counselor_id
-    FROM case_collaborators
-    WHERE case_id = ?
-  `,
-    [session.case_id],
-  );
+  // const [case_collaborators_rows] = await connection.query(
+  //   `
+  //   SELECT counselor_id
+  //   FROM case_collaborators
+  //   WHERE case_id = ?
+  // `,
+  //   [session.case_id],
+  // );
 
-  const is_collaborator = case_collaborators_rows.some(
-    (c) => c.counselor_id === account_id,
-  );
+  // const is_collaborator = case_collaborators_rows.some(
+  //   (c) => c.counselor_id === account_id,
+  // );
 
-  if (!is_collaborator) {
-    throw new AppError("Could not process your request.");
-  }
+  // if (!is_collaborator) {
+  //   throw new AppError("Could not process your request.");
+  // }
 
   const [session_attachment_rows] = await connection.query(
     `
@@ -2664,22 +2665,22 @@ const getSessionAttachedVirtualRooms = async ({
     );
   }
 
-  const [case_collaborators_rows] = await connection.query(
-    `
-    SELECT counselor_id
-    FROM case_collaborators
-    WHERE case_id = ?
-  `,
-    [session.case_id],
-  );
+  // const [case_collaborators_rows] = await connection.query(
+  //   `
+  //   SELECT counselor_id
+  //   FROM case_collaborators
+  //   WHERE case_id = ?
+  // `,
+  //   [session.case_id],
+  // );
 
-  const is_collaborator = case_collaborators_rows.some(
-    (c) => c.counselor_id === account_id,
-  );
+  // const is_collaborator = case_collaborators_rows.some(
+  //   (c) => c.counselor_id === account_id,
+  // );
 
-  if (!is_collaborator) {
-    throw new AppError("Could not process your request.");
-  }
+  // if (!is_collaborator) {
+  //   throw new AppError("Could not process your request.");
+  // }
 
   const [session_virtual_rooms_rows] = await connection.query(
     `
