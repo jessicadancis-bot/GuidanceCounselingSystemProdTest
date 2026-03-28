@@ -1,0 +1,13 @@
+# dependencies
+node_modules
+
+# environmental variables
+.env
+certs
+
+# Logs
+logs
+
+# build
+uploads
+test

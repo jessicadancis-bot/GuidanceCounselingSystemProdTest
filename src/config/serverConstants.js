@@ -1,0 +1,25 @@
+const ROLE = {
+  SUPER_ADMIN: 1,
+  SYS_ADMIN: 2,
+  ADMIN: 3,
+  COUNSELOR: 4,
+  CLIENT: 5
+};
+
+const STATUS = {
+  PENDING: 1,
+  APPROVED: 2,
+  ONGOING: 3,
+  AWAITING_COUNSELOR_RESPONSE: 4,
+  CANCELED: 5,
+  ACCEPTED: 6,
+  REJECTED: 7,
+  TERMINATED: 8
+};
+
+const REQUEST_TYPE = {
+  REFERRAL: 1,
+  SELF_REQUEST: 2
+}
+
+module.exports = { ROLE, STATUS, REQUEST_TYPE };
