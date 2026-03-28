@@ -24,6 +24,8 @@
     "luxon": "^3.7.2",
     "multer": "^2.0.2",
     "mysql2": "^3.14.3",
+    "mysqldump": "^3.2.0",
+    "node-cron": "^4.2.1",
     "nodemailer": "^7.0.6",
     "puppeteer": "^24.35.0",
     "resend": "^6.8.0",

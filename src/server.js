@@ -16,6 +16,7 @@ const https = require("https");
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const cron = require("node-cron");
 const { createWebSocket } = require("./websocket");
 
 const server = express();
@@ -90,6 +91,17 @@ createWebSocket({ server: httpServer });
 
 httpServer.listen(port, host, () => {
   logger.info(`HTTPS server listening on https://${host}:${port}`);
+});
+
+cron.schedule("*/1 * * * *", async () => {
+  try {
+    console.log("Notification routine started")
+    await sendUpcomingSessionNotification({});
+
+    console.log("Notification routine ended")
+  } catch (err) {
+    console.error("Cron error:", err);
+  }
 });
 
 module.exports = server;

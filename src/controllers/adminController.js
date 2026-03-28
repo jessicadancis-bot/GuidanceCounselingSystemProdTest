@@ -65,7 +65,7 @@ const getCounselingRequestHandler = async (req, res, next) => {
   try {
     const response = await getCounselingRequests({
       search: req.query?.search,
-      limit: req.query?.limit || 1,
+      limit: req.query?.limit,
       page: req.query.page,
       status: req.query.status,
     });

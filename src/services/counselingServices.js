@@ -20,6 +20,7 @@ const { sendEmail } = require("../utils/emails");
 
 const referClient = async ({
   referrer_name,
+  referrer_contact,
   client_name,
   relation,
   reason,
@@ -28,10 +29,27 @@ const referClient = async ({
   section,
   connection,
 }) => {
+  referrer_name = normalize(referrer_name);
+  client_name = normalize(client_name);
+  relation = normalize(relation);
+  reason = normalize(reason);
+  client_public_id = normalize(client_public_id);
+  section = normalize(section);
+  referrer_contact = normalize(referrer_contact);
+
   const validations = [
     {
       check: !referrer_name,
       message: "Referrer name must be provided",
+    },
+    {
+      check: !referrer_contact,
+      message: "Referrer contact must be provided",
+    },
+    {
+      check: client_public_id && client_public_id.length > 45,
+      message:
+        "Student ID exceeded the maximum 45 char. Please make sure you have the correct student id.",
     },
     {
       check: !client_name,
@@ -58,8 +76,8 @@ const referClient = async ({
   }
 
   try {
-    const to_insert = ["referrer_name", "client_name", "reason", "course"];
-    const to_insert_val = [referrer_name, client_name, reason, course];
+    const to_insert = ["referrer_name", "client_name", "reason", "course", "referrer_contact"];
+    const to_insert_val = [referrer_name, client_name, reason, course, referrer_contact];
 
     if (client_public_id) {
       to_insert.push("student_id");
@@ -102,7 +120,7 @@ const getReferrals = async ({
   connection = pool,
 }) => {
   page = Math.max(1, !isNaN(page) ? Number(page) : 1);
-  limit = Number(limit) || 10;
+  limit = Number(limit) || 0;
   const offset = (page - 1) * limit;
 
   const where_cl = [];
@@ -127,14 +145,13 @@ const getReferrals = async ({
 
   const [referral_rows] = await connection.query(
     `
-    SELECT r.id, r.client_name, r.referrer_name, r.reason, r.relation, r.section, r.student_id,
+    SELECT r.id, r.client_name, r.referrer_name, r.reason, r.relation, r.section, r.student_id, r.referrer_contact,
            c.id AS course_id, c.name AS course_name, COUNT(*) OVER() AS total_count
     FROM referrals AS r
     LEFT JOIN courses AS c 
       ON c.id = r.course
     ${where_cl.length > 0 ? `WHERE ${where_cl.join(" AND ")}` : ""}
-    LIMIT ?
-    OFFSET ?
+    ${limit && limit > 0 ? "LIMIT ? OFFSET ?" : ""}
   `,
     [...where_cl_val, limit, offset],
   );
@@ -178,10 +195,19 @@ const handleReferral = async ({
 };
 
 const closeReferral = async ({
-  account_id,
   referral_id,
   connection = pool,
 }) => {
+  const validations = [
+    {
+      check: !referral_id,
+      message: "Referral ID must be provided.",
+    }
+  ];
+
+  const errors = validations.filter((v) => v.check).map((v) => v.message);
+  if (errors.length > 0) throw new AppError("Validation errors", 400, errors);
+
   const [res] = await connection.query(
     `
     UPDATE referrals SET status = ?
@@ -414,7 +440,6 @@ const getClientCounselingRequests = async ({
   if (validation_errors.length > 0)
     throw new AppError("BAD REQUEST", 400, validation_errors);
 
-  // Build dynamic WHERE clause
   const where_claus = [];
   const value = [];
 
@@ -886,13 +911,6 @@ const getCounselingRequests = async ({
   const offset = (page - 1) * limit;
 
   const validations = [
-    { check: isNaN(limit), message: "Limit must be a number!" },
-    {
-      check: limit <= 0 || limit > 100,
-      message: "Limit must be between 1 and 100",
-    },
-    { check: isNaN(page), message: "Page must be a number!" },
-    { check: page < 1, message: "Page must be >= 1" },
   ];
 
   const errors = validations.filter((v) => v.check).map((v) => v.message);
@@ -959,7 +977,7 @@ const getCounselingRequests = async ({
     ORDER BY 
       CASE WHEN u.department_id = ? THEN 0 ELSE 1 END,
       cs.created_at ASC
-    ${limit && limit > 0 ? "LIMIT ? OFFSET ?" : ""}
+    ${limit && limit > 0 ? 'LIMIT ? OFFSET ?' : ''}
     `,
     [...values, account.department_id, limit, offset],
   );
@@ -1175,7 +1193,9 @@ const createCounselingCaseSession = async ({
     );
 
     if (session_rows.length >= 1) {
-      throw new AppError("Could not create another session. Please make sure that there are no active session in this case.")
+      throw new AppError(
+        "Could not create another session. Please make sure that there are no active session in this case.",
+      );
     }
 
     const meeting_date_db = meeting_date_ph.toFormat("yyyy-LL-dd HH:mm:ss");
