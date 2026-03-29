@@ -15,6 +15,7 @@ const {
   checkForRefreshToken
 } = require("../middleware/authMiddleware");
 const { PERMISSIONS } = require("../config/permissionsConfig");
+const { useLimiter } = require("../utils/Limiter");
 
 const router = express.Router();
 
@@ -24,6 +25,7 @@ router.get("/", (req, res) => {
 router.get(
   "/refresh",
   checkForRefreshToken,
+  useLimiter({ seconds: 60, max: 2, message: "Too many refresh attempts. Try again later." }),
   refreshTokenHandler
 );
 router.post("/google", 

@@ -17,12 +17,20 @@ const http = require("http");
 const path = require("path");
 const { createWebSocket } = require("./websocket");
 const { sendUpcomingSessionNotification } = require("./services/notificationServices");
+const { useLimiter } = require("./utils/Limiter");
 
 const server = express();
 const host = "0.0.0.0";
 const port = process.env.PORT || 3000;
 
+const global_limiter = useLimiter({
+  seconds: 60,
+  max: 200,
+  message: "Too many requests, slow down."
+});
+
 // server configurations
+server.use(global_limiter);
 server.use(express.json());
 server.use(cookieParser());
 server.use(
