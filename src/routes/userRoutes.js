@@ -95,5 +95,4 @@ router.get(
   getAnnouncementHandler
 );
 
-
 module.exports = router;

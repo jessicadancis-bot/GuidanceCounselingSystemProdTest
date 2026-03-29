@@ -325,7 +325,6 @@ const requestPasswordReset = async ({ account_email, connection }) => {
     throw new AppError("Account email cannot be empty!", 400);
   }
 
-  // Verify account exists
   const [rows] = await pool.query(
     `SELECT account_id FROM accounts WHERE email = ? AND google_sub IS NULL`,
     [account_email]
@@ -411,13 +410,11 @@ const requestAccountVerification = async ({ email, connection }) => {
     }
 
     const account = result[0];
-    // delete old request if any
     await connection.query(
       `DELETE FROM verification_request WHERE account_id = ?`,
       [account.account_id]
     );
 
-    // insert new token
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 

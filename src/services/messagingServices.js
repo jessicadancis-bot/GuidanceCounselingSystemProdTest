@@ -7,6 +7,7 @@ const {
   addConversationToMap,
 } = require("../websocket");
 const { generateRandomID } = require("../utils/randomizer");
+const { encryptMessage, decryptMessage } = require("../utils/Encryptor");
 
 const insertToConversation = async ({
   conversation_id,
@@ -62,12 +63,15 @@ const insertToConversation = async ({
     );
   }
 
+  const encrypted_message = encryptMessage(content);
+  const { iv, content: encrypted_content, tag } = encrypted_message;
+
   await connection.query(
     `
-    INSERT INTO messages (conversation_id, sender_id, content)
-    VALUES (?, ?, ?)
+    INSERT INTO messages (conversation_id, sender_id, content, iv, tag)
+    VALUES (?, ?, ?, ?, ?)
   `,
-    [conversation_id, sender_id, content],
+    [conversation_id, sender_id, encrypted_content, iv, tag],
   );
 };
 
@@ -320,7 +324,9 @@ const getMyConversations = async ({ account_id, limit, page, connection = pool }
               m.id, 
               u.public_id AS user_id,
               CONCAT(u.given_name, ' ', u.last_name) AS user_name,
-              m.content, 
+              m.content,
+              m.iv,
+              m.tag,
               m.created_at, 
               m.conversation_id,
               ROW_NUMBER() OVER (
@@ -341,6 +347,13 @@ const getMyConversations = async ({ account_id, limit, page, connection = pool }
   messages_rows.forEach((msg) => {
     if (!message_map[msg.conversation_id])
       message_map[msg.conversation_id] = [];
+    const decrypted_content = decryptMessage({
+      iv: msg.iv,
+      content: msg.content,
+      tag: msg.tag,
+    });
+
+    msg.content = decrypted_content;
     message_map[msg.conversation_id].push(msg);
   });
 
@@ -417,7 +430,8 @@ const getMyConversationData = async ({
 
   const [participants] = await connection.query(
     `
-    SELECT u.public_id, CONCAT(u.given_name, ' ', u.last_name) AS user_name, u.given_name, u.last_name, cp.user_id AS account_id
+    SELECT u.public_id, CONCAT(u.given_name, ' ', u.last_name) AS user_name, 
+      u.given_name, u.last_name, cp.user_id AS account_id
     FROM conversation_participants cp
     JOIN users u ON cp.user_id = u.account_id
     WHERE cp.conversation_id = ?
@@ -427,16 +441,27 @@ const getMyConversationData = async ({
 
   const [messages] = await connection.query(
     `
-    SELECT m.id AS message_id, u.public_id AS user_id, CONCAT(u.given_name, ' ', u.last_name) AS user_name,
-      m.content, DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
+    SELECT m.id AS id, u.public_id AS user_id, CONCAT(u.given_name, ' ', u.last_name) AS user_name,
+      m.content, m.iv, m.tag,
+      DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at
     FROM messages AS m
     JOIN users AS u ON u.account_id = m.sender_id
     WHERE m.conversation_id = ?
     ORDER BY m.created_at DESC, m.id DESC
-    LIMIT 10
+    LIMIT 20
     `,
     [conversation_id],
   );
+
+  messages.forEach((msg) => {
+    if (msg.iv && msg.tag && msg.content) {
+      msg.content = decryptMessage({
+        iv: msg.iv,
+        content: msg.content,
+        tag: msg.tag,
+      });
+    }
+  });
 
   const [conversation_info] = await connection.query(
     `
@@ -488,7 +513,7 @@ const loadConversationMessages = async ({
     `
     SELECT 1 FROM conversation_participants
     WHERE conversation_id = ? AND user_id = ?
-  `,
+    `,
     [conversation_id, account_id],
   );
 
@@ -497,11 +522,13 @@ const loadConversationMessages = async ({
   }
 
   let query = `
-        SELECT m.id, u.public_id AS user_id, CONCAT(u.given_name, ' ', u.last_name) AS user_name,
-          m.content, DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at, m.conversation_id
-        FROM messages AS m
-        JOIN users AS u ON u.account_id = m.sender_id
-        WHERE m.conversation_id = ?
+    SELECT m.id, u.public_id AS user_id, CONCAT(u.given_name, ' ', u.last_name) AS user_name,
+      m.content, m.iv, m.tag,
+      DATE_FORMAT(m.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
+      m.conversation_id
+    FROM messages AS m
+    JOIN users AS u ON u.account_id = m.sender_id
+    WHERE m.conversation_id = ?
   `;
   const params = [conversation_id];
 
@@ -514,6 +541,16 @@ const loadConversationMessages = async ({
   params.push(limit);
 
   const [messages_rows] = await connection.query(query, params);
+
+  messages_rows.forEach((msg) => {
+    if (msg.iv && msg.tag && msg.content) {
+      msg.content = decryptMessage({
+        iv: msg.iv,
+        content: msg.content,
+        tag: msg.tag,
+      });
+    }
+  });
 
   messages_rows.reverse();
 
