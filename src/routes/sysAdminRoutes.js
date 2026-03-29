@@ -3,7 +3,7 @@ const multer = require("multer");
 const upload = multer({ dest: "uploads/"});
 const { requiresPermission } = require("../middleware/authMiddleware");
 const { PERMISSIONS } = require("../config/permissionsConfig");
-const { createCourseHandler, getCoursesHandler, getAccountsHandler, updateAccountHandler, archiveAccountHandler, addRolePermissionHandler, getPermissionsHandler, createRoleHandler, getRolesHandler, updateCourseHandler, getCourseDataHandler, getAccountDataHandler, addCounselingQuestionHandler, updateCounselingQuestionHandler, archiveCounselingQuestionHandler, archiveCourseHandler, getCounselingQuestionsHandler, getAuditLogsHandler, disableAccountHandler, batchRegisterAccountsHandler, registerAccountHandler, createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler, batchArchiveAccountsHandler, archiveDepartmentHandler } = require("../controllers/sysAdminController");
+const { createCourseHandler, getCoursesHandler, getAccountsHandler, updateAccountHandler, archiveAccountHandler, addRolePermissionHandler, getPermissionsHandler, createRoleHandler, getRolesHandler, updateCourseHandler, getCourseDataHandler, getAccountDataHandler, addCounselingQuestionHandler, updateCounselingQuestionHandler, archiveCounselingQuestionHandler, archiveCourseHandler, getCounselingQuestionsHandler, getAuditLogsHandler, disableAccountHandler, batchRegisterAccountsHandler, registerAccountHandler, createDepartmentHandler, getDepartmentsHandler, updateDepartmentHandler, batchArchiveAccountsHandler, archiveDepartmentHandler, backupDatabaseHandler, getAccountsAnalyticsHandler } = require("../controllers/sysAdminController");
 
 const router = express.Router();
 
@@ -138,6 +138,16 @@ router.get(
   "/departments",
   requiresPermission({ permission: [PERMISSIONS.GET_DEPARTMENTS] }),
   getDepartmentsHandler
+);
+router.get(
+  "/database/backup",
+  requiresPermission({ permission: [PERMISSIONS.GET_DEPARTMENTS] }),
+  backupDatabaseHandler
+);
+router.get(
+  "/accounts/analytics",
+  requiresPermission({ permission: [PERMISSIONS.GET_ACCOUNTS] }),
+  getAccountsAnalyticsHandler
 );
 
 module.exports = router;
