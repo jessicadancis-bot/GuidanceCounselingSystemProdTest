@@ -29,7 +29,7 @@ const getAccountsHandler = async (req, res, next) => {
       sort_order: req.query?.sort_order,
       archived: req.query?.is_archived,
       page: req.query?.page,
-      limit: req.query?.limit || 1,
+      limit: req.query?.limit,
     });
 
     const data = results.data?.map(({ ...rest }) => rest);

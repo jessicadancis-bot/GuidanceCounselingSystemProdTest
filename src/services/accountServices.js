@@ -742,7 +742,7 @@ const updateAccount = async ({
     if (performer_id === account_id) {
       throw new AppError("Cannot change your own role.");
     }
-    
+
     account_update.push("role = ?");
     account_update_value.push(role);
   }
@@ -864,7 +864,6 @@ const createUser = async ({
 };
 
 const getAccounts = async ({
-  self_account_id,
   search,
   roles,
   archived,
@@ -875,7 +874,7 @@ const getAccounts = async ({
   search = normalize(search)?.toLowerCase();
   roles = roles?.split(",").map(Number);
   archived = archived === "1" ? 1 : 0;
-  limit = !isNaN(limit) ? Number(limit) : 10;
+  limit = !isNaN(limit) ? Number(limit) : 0;
   page = Math.max(1, !isNaN(page) ? Number(page) : 1);
   const offset = (page - 1) * limit;
 
@@ -908,15 +907,35 @@ const getAccounts = async ({
     JOIN roles AS r ON r.id = accounts.role
     ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
     ORDER BY accounts.created_at DESC
-    LIMIT ? OFFSET ?
+    ${limit && limit > 0 ? 'LIMIT ? OFFSET ?' : ''}
   `;
 
   const [rows] = await connection.query(sql, [...values, limit, offset]);
 
   const total = rows[0]?.total_count;
-  const total_pages = Math.ceil(total / limit);
+  const total_pages = limit ? Math.ceil(total / limit) : 1;
 
   return { data: rows, total_pages, total, page };
+};
+
+const getAccountsAnalytics = async ({ connection = pool }) => {
+  const [rows] = await connection.query(
+    `
+    SELECT 
+      COUNT(*) AS total_accounts,
+      COUNT(CASE WHEN is_archived = 0 THEN 1 END) AS total_active_accounts,
+      COUNT(CASE WHEN role = ? THEN 1 END) AS total_admins,
+      COUNT(CASE WHEN role = ? THEN 1 END) AS total_sysadmins,
+      COUNT(CASE WHEN role = ? THEN 1 END) AS total_counselors,
+      COUNT(CASE WHEN role = ? THEN 1 END) AS total_students,
+      COUNT(CASE WHEN is_archived = 1 THEN 1 END) AS archived_accounts,
+      COUNT(CASE WHEN is_disabled = 1 THEN 1 END) AS disabled_accounts
+    FROM accounts
+  `,
+    [ROLE.ADMIN, ROLE.SYS_ADMIN, ROLE.COUNSELOR, ROLE.CLIENT]
+  );
+
+  return { data: rows[0] };
 };
 
 const getAccountData = async ({ account_id, connection = pool }) => {
@@ -1105,4 +1124,5 @@ module.exports = {
   disableAccount,
   batchRegisterAccounts,
   batchArchive,
+  getAccountsAnalytics
 };

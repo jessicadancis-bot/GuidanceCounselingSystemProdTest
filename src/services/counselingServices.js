@@ -76,8 +76,20 @@ const referClient = async ({
   }
 
   try {
-    const to_insert = ["referrer_name", "client_name", "reason", "course", "referrer_contact"];
-    const to_insert_val = [referrer_name, client_name, reason, course, referrer_contact];
+    const to_insert = [
+      "referrer_name",
+      "client_name",
+      "reason",
+      "course",
+      "referrer_contact",
+    ];
+    const to_insert_val = [
+      referrer_name,
+      client_name,
+      reason,
+      course,
+      referrer_contact,
+    ];
 
     if (client_public_id) {
       to_insert.push("student_id");
@@ -157,7 +169,7 @@ const getReferrals = async ({
   );
 
   const total = referral_rows[0]?.total_count;
-  const total_pages = Math.ceil(total / limit);
+  const total_pages = limit ? Math.ceil(total / limit) : 1;
 
   return { data: referral_rows, total, total_pages };
 };
@@ -194,15 +206,12 @@ const handleReferral = async ({
   );
 };
 
-const closeReferral = async ({
-  referral_id,
-  connection = pool,
-}) => {
+const closeReferral = async ({ referral_id, connection = pool }) => {
   const validations = [
     {
       check: !referral_id,
       message: "Referral ID must be provided.",
-    }
+    },
   ];
 
   const errors = validations.filter((v) => v.check).map((v) => v.message);
@@ -910,8 +919,7 @@ const getCounselingRequests = async ({
   page = Math.max(1, !isNaN(page) ? Number(page) : 1);
   const offset = (page - 1) * limit;
 
-  const validations = [
-  ];
+  const validations = [];
 
   const errors = validations.filter((v) => v.check).map((v) => v.message);
   if (errors.length) {
@@ -977,7 +985,7 @@ const getCounselingRequests = async ({
     ORDER BY 
       CASE WHEN u.department_id = ? THEN 0 ELSE 1 END,
       cs.created_at ASC
-    ${limit && limit > 0 ? 'LIMIT ? OFFSET ?' : ''}
+    ${limit && limit > 0 ? "LIMIT ? OFFSET ?" : ""}
     `,
     [...values, account.department_id, limit, offset],
   );
@@ -2240,24 +2248,41 @@ const getCaseAnalytics = async ({ connection = pool }) => {
   const start_of_month = now.startOf("month");
   const start_of_year = now.startOf("year");
 
-  const [rows] = await connection.query(
+  const [case_rows] = await connection.query(
     `
-    SELECT
-      COUNT(CASE WHEN status = ? AND created_at >= ? THEN 1 END) AS terminated_total,
-      COUNT(CASE WHEN status = ? AND created_at >= ? THEN 1 END) AS ongoing_total,
-      COUNT(CASE WHEN created_at >= ? THEN 1 END) AS year_total
-    FROM counseling_cases
-  `,
+      SELECT
+        DATE_FORMAT(created_at, '%Y-%m') AS month,
+        COUNT(CASE WHEN status = ? THEN 1 END) AS ongoing_total,
+        COUNT(CASE WHEN status = ? AND updated_at >= ? THEN 1 END) AS terminated_total,
+        (SELECT COUNT(*) 
+        FROM counseling_cases
+        WHERE created_at >= ?) AS year_total
+      FROM counseling_cases
+      GROUP BY month
+      ORDER BY month ASC
+          `,
     [
-      STATUS.TERMINATED,
-      start_of_month.toFormat("yyyy-MM-dd HH:mm:ss"),
       STATUS.ONGOING,
+      STATUS.TERMINATED,
       start_of_month.toFormat("yyyy-MM-dd HH:mm:ss"),
       start_of_year.toFormat("yyyy-MM-dd HH:mm:ss"),
     ],
   );
 
-  return { data: rows[0] };
+  const [request_rows] = await connection.query(
+    `
+      SELECT
+        DATE_FORMAT(created_at, '%Y-%m') AS month,
+        COUNT(*) AS requests_in_month
+      FROM counseling_requests
+      WHERE created_at >= ?
+      GROUP BY month
+      ORDER BY month ASC
+      `,
+    [start_of_year.toFormat("yyyy-MM-dd HH:mm:ss")],
+  );
+
+  return { data: { cases: case_rows, requests: request_rows } };
 };
 
 const addSessionAttachment = async ({
@@ -2417,7 +2442,6 @@ const getSessionAttachments = async ({
   session_id,
   connection = pool,
 }) => {
-  console.log("???")
   session_id = normalize(session_id);
 
   const validations = [

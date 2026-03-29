@@ -9,6 +9,7 @@ const {
   batchRegisterAccounts,
   registerAccount,
   batchArchive,
+  getAccountsAnalytics,
 } = require("../services/accountServices");
 const { getAuditLogs } = require("../services/auditService");
 const {
@@ -37,6 +38,7 @@ const { createRole, getRoles } = require("../services/roleService");
 const { parseCSV } = require("../utils/csvHelper");
 const { sendEmail } = require("../utils/emails");
 const { ROLE } = require("../config/serverConstants");
+const { backupDatabase } = require("../services/dbServices");
 
 const createRoleHandler = async (req, res, next) => {
   try {
@@ -142,7 +144,7 @@ const getCoursesHandler = async (req, res, next) => {
       limit: req.query?.limit
     });
 
-    return res.status(200).json({ courses: results.data, total_pages: results.total_pages });
+    return res.status(200).json({ courses: results.data, total_pages: results.total_pages, total: results.total });
   } catch (e) {
     return next(e);
   }
@@ -198,15 +200,14 @@ const archiveCourseHandler = async (req, res, next) => {
 const getAccountsHandler = async (req, res, next) => {
   try {
     const results = await getAccounts({
-      self_account_id: req.user?.accountId,
       search: req.query?.search,
       roles: req.query?.roles,
       archived: req.query?.archived,
-      limit: req.query?.limit || 1,
+      limit: req.query?.limit,
       page: req.query?.page,
     });
 
-    return res.status(200).json({ result: results.data, total_pages: results.total_pages });
+    return res.status(200).json({ result: results.data, total_pages: results.total_pages, total: results.total });
   } catch (e) {
     return next(e);
   }
@@ -323,7 +324,7 @@ const getCounselingQuestionsHandler = async (req, res, next) => {
       is_archived: req.query?.is_archived,
     });
 
-    return res.status(201).json({ questions: results.data, total_pages: results.total_pages });
+    return res.status(201).json({ questions: results.data, total_pages: results.total_pages, total: results.total });
   } catch (e) {
     return next(e);
   }
@@ -494,7 +495,31 @@ const getDepartmentsHandler = async (req, res, next) => {
       limit: req.query?.limit
     });
 
-    return res.status(200).json({ departments: results.data, total_pages: results.total_pages });
+    return res.status(200).json({ departments: results.data, total_pages: results.total_pages, total: results.total });
+  } catch (e) {
+    return next(e);
+  }
+};
+
+const backupDatabaseHandler = async (req, res, next) => {
+  try {
+    const results = await backupDatabase({});
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="backup_${Date.now()}.sql"`
+    );
+    res.setHeader("Content-Type", "application/sql");
+    res.send(results.dump)
+  } catch (e) {
+    return next(e);
+  }
+};
+
+const getAccountsAnalyticsHandler = async (req, res, next) => {
+  try {
+    const results = await getAccountsAnalytics({});
+
+    return res.status(200).json({ analytics: results.data });
   } catch (e) {
     return next(e);
   }
@@ -527,5 +552,7 @@ module.exports = {
   getDepartmentsHandler,
   updateDepartmentHandler,
   batchArchiveAccountsHandler,
-  archiveDepartmentHandler
+  archiveDepartmentHandler,
+  backupDatabaseHandler,
+  getAccountsAnalyticsHandler
 };
