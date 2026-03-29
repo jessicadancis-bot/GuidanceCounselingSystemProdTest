@@ -12,12 +12,11 @@ const clientRoutes = require("./routes/clientRoutes");
 const counselorRoutes = require("./routes/counselorRoutes");
 const sysAdminRoutes = require("./routes/sysAdminRoutes");
 const { logger } = require("./utils/logger");
-const https = require("https");
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
 const cron = require("node-cron");
+const http = require("http");
+const path = require("path");
 const { createWebSocket } = require("./websocket");
+const { sendUpcomingSessionNotification } = require("./services/notificationServices");
 
 const server = express();
 const host = "0.0.0.0";
