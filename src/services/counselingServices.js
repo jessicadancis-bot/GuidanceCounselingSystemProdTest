@@ -269,9 +269,9 @@ const requestCounseling = async ({
     {
       check:
         preferred_ph &&
-        (preferred_date_only <= today_ph ||
+        (preferred_date_only < today_ph ||
           preferred_date_only > max_allowed_ph),
-      message: "Preferred date must be a day after today and within 14 days.",
+      message: "Preferred date must be today or after today and within 14 days.",
     },
     {
       check:
