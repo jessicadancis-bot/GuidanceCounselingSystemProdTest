@@ -93,11 +93,11 @@ const createAnnouncementHandler = async (req, res, next) => {
 const getAnnouncementHandler = async (req, res, next) => {
   try {
     const results = await getAnnouncements({
-      limit: req.query?.limit || 1,
+      limit: req.query?.limit,
       page: req.query?.page,
     });
 
-    return res.status(200).json({ announcements: results.data, total_pages: results.total_pages });
+    return res.status(200).json({ announcements: results.data, total_pages: results.total_pages, total: results.total });
   } catch (e) {
     return next(e);
   }

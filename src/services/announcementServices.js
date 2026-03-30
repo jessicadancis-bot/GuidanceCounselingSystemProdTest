@@ -4,7 +4,7 @@ const AppError = require("../utils/AppError");
 
 const getAnnouncements = async ({ role, page, limit, connection = pool }) => {
   role = Number(role);
-  limit = Math.min(limit, 100) || 10;
+  limit = Math.min(limit, 100) || 0;
   page = Math.max(1, !isNaN(page) ? Number(page) : 1);
   const offset = (page - 1) * limit;
 
@@ -17,7 +17,6 @@ const getAnnouncements = async ({ role, page, limit, connection = pool }) => {
     throw new AppError("Validation errors", 400, validation_errors);
   }
 
-  // Build WHERE clause for role filter
   const conditions = [];
   const params = [];
 
@@ -50,13 +49,13 @@ const getAnnouncements = async ({ role, page, limit, connection = pool }) => {
    FROM announcements a
    ${whereClause}
    ORDER BY a.created_at DESC
-   LIMIT ? OFFSET ?`,
+   ${limit && limit > 0 ? 'LIMIT ? OFFSET ?' : ''}`,
     [...params, limit, offset],
   );
 
-  const total_pages = Math.ceil(total_count / limit);
+  const total_pages = limit ? Math.ceil(total_count / limit) : 1;
 
-  return { data: announcement_rows, total_pages, page };
+  return { data: announcement_rows, total_pages, total: total_count, page };
 };
 
 const createAnnouncement = async ({ title, content, audience, connection }) => {

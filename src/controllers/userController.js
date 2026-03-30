@@ -202,6 +202,7 @@ const referClientHandler = async (req, res, next) => {
       reason: req.body?.reason,
       client_public_id: req.body?.studentId,
       course: req.body?.course,
+      referrer_contact: req.body?.referrerContact,
       section: req.body?.section,
     });
 
@@ -233,7 +234,7 @@ const getAnnouncementHandler = async (req, res, next) => {
   try {
     const results = await getAnnouncements({
       role: req.user?.role,
-      limit: req.query?.limit || 1,
+      limit: req.query?.limit,
       page: req.query?.page,
     });
 

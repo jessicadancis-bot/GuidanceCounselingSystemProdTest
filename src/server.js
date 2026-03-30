@@ -39,7 +39,7 @@ server.use(
     credentials: true,
   })
 );
-server.set("trust proxy", true);
+server.set("trust proxy", "loopback");
 
 // Serve frontend static files
 server.use(express.static(path.join(__dirname, "..", "public")));
@@ -102,10 +102,7 @@ httpServer.listen(port, host, () => {
 
 cron.schedule("*/1 * * * *", async () => {
   try {
-    console.log("Notification routine started")
     await sendUpcomingSessionNotification({});
-
-    console.log("Notification routine ended")
   } catch (err) {
     console.error("Cron error:", err);
   }

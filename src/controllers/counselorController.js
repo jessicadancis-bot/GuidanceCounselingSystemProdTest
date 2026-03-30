@@ -372,7 +372,7 @@ const getReferralsHandler = async (req, res, next) => {
       status: req.query.status,
       page: req.query?.page,
       search: req.query.search,
-      limit: req.query?.limit || 1,
+      limit: req.query?.limit,
     });
 
     return res.status(200).json({ referrals: results.data, total_pages: results.total_pages, total: results.total });
