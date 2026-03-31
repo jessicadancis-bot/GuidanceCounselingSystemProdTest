@@ -3,6 +3,7 @@ const pool = require("../db");
 const AppError = require("../utils/AppError");
 const { normalize } = require("../utils/DataHelper");
 const { sendEmail } = require("../utils/emails");
+const { chunkArray } = require("../utils/ArrayHelper");
 const pLimit = require("p-limit");
 
 const sendUpcomingSessionNotification = async ({ connection }) => {
