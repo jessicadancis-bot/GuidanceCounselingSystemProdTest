@@ -2,7 +2,7 @@ const { ROLE } = require("./serverConstants");
 
 const SESSION_TIME_RANGE = {
     from: 8,
-    to: 18
+    to: 17
 };
 
 const ROLE_REDIRECTS = {
