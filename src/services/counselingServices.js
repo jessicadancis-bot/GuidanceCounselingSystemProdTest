@@ -269,9 +269,9 @@ const requestCounseling = async ({
     {
       check:
         preferred_ph &&
-        (preferred_ph < today_ph ||
-          preferred_date_only > max_allowed_ph),
-      message: "Preferred date and time must be within the next 14 days and cannot be in the past.",
+        (preferred_ph < today_ph || preferred_date_only > max_allowed_ph),
+      message:
+        "Preferred date and time must be within the next 14 days and cannot be in the past.",
     },
     {
       check:
@@ -1226,18 +1226,13 @@ const createCounselingCaseSession = async ({
 
     await connection.query(
       `
-      INSERT INTO schedules (account_id, schedule_time, reminder_sent, case_id)
-      VALUES (?, ?, ?, ?), (?, ?, ?, ?)
-    `,
+        INSERT INTO schedules (schedule_time, reminder_sent, case_id)
+        VALUES (?, ?, ?)
+      `,
       [
-        counselor_id,
         meeting_date_db,
         false,
-        case_id,
-        case_data.client_id,
-        meeting_date_db,
-        false,
-        case_id,
+        case_id
       ],
     );
 
@@ -1511,6 +1506,21 @@ const updateCounselorCaseSession = async ({
     );
 
     const client = client_rows[0];
+
+    if (preferred_dt) {
+      await connection.query(
+        `
+          UPDATE schedules
+          SET schedule_time = ?, reminder_sent = FALSE
+          WHERE case_id = ?
+        `,
+        [
+          preferred_dt.toFormat("yyyy-LL-dd HH:mm:ss"),
+          case_id,
+        ],
+      );
+    }
+
     if (new_preferred_date || new_preferred_time) {
       const formatted_date = new_preferred_date
         ? DateTime.fromISO(new_preferred_date)
@@ -1542,11 +1552,7 @@ const updateCounselorCaseSession = async ({
         </div>
       `;
 
-      sendEmail(
-        client.email,
-        "Session Rescheduled",
-        html_body,
-      );
+      sendEmail(client.email, "Session Rescheduled", html_body);
 
       const message = `Your CASE ${case_id} SESSION ${session_id} has been rescheduled to ${formatted_date} ${formatted_time}`;
 

@@ -216,7 +216,7 @@ const getNotificationsHandler = async (req, res, next) => {
   try {
     const results = await getNotifications({
       account_id: req.user?.accountId,
-      limit: req.query?.limit || 1,
+      limit: req.query?.limit,
       page: req.query?.page,
     });
 

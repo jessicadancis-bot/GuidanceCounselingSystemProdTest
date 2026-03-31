@@ -100,7 +100,7 @@ httpServer.listen(port, host, () => {
   logger.info(`HTTPS server listening on https://${host}:${port}`);
 });
 
-cron.schedule("*/1 * * * *", async () => {
+cron.schedule("*/15 * * * *", async () => {
   try {
     await sendUpcomingSessionNotification({});
   } catch (err) {
