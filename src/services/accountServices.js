@@ -8,6 +8,7 @@ const { auditAction } = require("./auditService");
 const { generateComplexPassword } = require("../utils/PasswordHelper");
 const { ROLE } = require("../config/serverConstants");
 const { generateID } = require("../utils/randomizer");
+const { DateTime } = require("luxon");
 
 const batchRegisterAccounts = async ({
   performed_by,
@@ -92,11 +93,14 @@ const batchRegisterAccounts = async ({
       last_name,
       student_id,
       year_level,
+      birth_date,
+      gender,
     } of payload) {
       const normalized_email = normalize(email);
       const normalized_given = normalize(given_name);
       const normalized_middle = normalize(middle_name);
       const normalized_last = normalize(last_name);
+      const normalized_gender = normalize(gender);
       const normalized_student_id =
         batch_role === ROLE.CLIENT ? normalize(student_id) : undefined;
       const year_level_norm =
@@ -104,10 +108,26 @@ const batchRegisterAccounts = async ({
           ? Number(year_level) || undefined
           : undefined;
 
+      const birth_date_norm = DateTime.fromISO(birth_date, {
+        zone: "Asia/Manila",
+      });
+
       const validations = [
         {
           check: batch_role === ROLE.CLIENT && !normalized_student_id,
           message: "student id must be provided",
+        },
+        {
+          check: !gender,
+          message: "Gender must be provided",
+        },
+        {
+          check: gender && !["MALE", "FEMALE"].includes(normalized_gender),
+          message: "Invalid gender value. Allowed values are MALE or FEMALE.",
+        },
+        {
+          check: !birth_date_norm.isValid,
+          message: "Invalid birth date format. Please provide a valid date.",
         },
         {
           check:
@@ -135,6 +155,10 @@ const batchRegisterAccounts = async ({
           given_name: normalized_given,
           middle_name: normalized_middle,
           last_name: normalized_last,
+          student_id: normalized_student_id,
+          year_level: year_level_norm,
+          birth_date: birth_date,
+          gender: normalized_gender,
           errors: validation_errors,
         });
 
@@ -164,7 +188,7 @@ const batchRegisterAccounts = async ({
       );
 
       const public_id = normalized_student_id;
-      account_users.push("(?, ?, ?, ?, ?, ?, ?, ?)");
+      account_users.push("(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
       account_users_value.push(
         account_id,
         public_id,
@@ -174,6 +198,8 @@ const batchRegisterAccounts = async ({
         batch_department,
         batch_course,
         year_level_norm,
+        birth_date_norm.toFormat("yyyy-LL-dd HH:mm:ss"),
+        gender,
       );
 
       valid_accounts.push({
@@ -181,7 +207,11 @@ const batchRegisterAccounts = async ({
         email,
         given_name,
         middle_name,
+        account_id,
+        year_level,
+        birth_date,
         last_name,
+        gender,
       });
 
       if (is_new) {
@@ -217,7 +247,7 @@ const batchRegisterAccounts = async ({
 
     await connection.query(
       `
-        INSERT INTO users(account_id, public_id, given_name, middle_name, last_name, department_id, course, year_level) 
+        INSERT INTO users(account_id, public_id, given_name, middle_name, last_name, department_id, course, year_level, birthdate, gender) 
         VALUES ${account_users.join(", ")}
         ON DUPLICATE KEY UPDATE
           public_id = VALUES(public_id),
@@ -226,7 +256,9 @@ const batchRegisterAccounts = async ({
           last_name = VALUES(last_name),
           department_id = VALUES(department_id),
           course = VALUES(course),
-          year_level = VALUES(year_level)
+          year_level = VALUES(year_level),
+          birthdate = VALUES(birthdate),
+          gender = VALUES(gender)
       `,
       account_users_value,
     );
@@ -315,6 +347,8 @@ const registerAccount = async ({
   student_id,
   year_level,
   course,
+  birth_date,
+  gender,
   department,
 }) => {
   email = normalize(email)?.toLowerCase();
@@ -328,11 +362,28 @@ const registerAccount = async ({
   student_id = normalize(student_id);
   performed_by = normalize(performed_by);
   department = role === ROLE.COUNSELOR ? normalize(department) : undefined;
+  gender = normalize(gender);
+
+  const birth_date_norm = DateTime.fromISO(birth_date, {
+    zone: "Asia/Manila",
+  });
 
   const validations = [
     {
       check: role === ROLE.CLIENT && student_id && student_id.length > 14,
       message: "Maximum length of student id must not exceed 14 characters",
+    },
+    {
+      check: !birth_date_norm.isValid,
+      message: "Invalid birth date format. Please provide a valid date.",
+    },
+    {
+      check: !gender,
+      message: "Gender must be provided",
+    },
+    {
+      check: gender && !["MALE", "FEMALE"].includes(gender),
+      message: "Invalid gender value. Allowed values are MALE or FEMALE.",
     },
     {
       check: role === ROLE.CLIENT && !course,
@@ -437,17 +488,23 @@ const registerAccount = async ({
     const public_id =
       role === ROLE.CLIENT ? student_id : await generateID({ connection });
 
-    await createUser({
-      account_id: account_id,
-      public_id: public_id,
-      given_name: given_name,
-      middle_name: middle_name,
-      last_name: last_name,
-      department: department,
-      course: course,
-      year_level,
-      connection: connection,
-    });
+    await connection.query(
+      `
+      INSERT INTO users(account_id, public_id, given_name, middle_name, last_name, department_id, course, year_level, gender, birthdate) 
+      VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        account_id,
+        public_id,
+        given_name,
+        middle_name,
+        last_name,
+        department,
+        course,
+        year_level,
+        gender,
+        birth_date_norm.toFormat("yyyy-LL-dd HH:mm:ss"),
+      ],
+    );
 
     await auditAction({
       action: "CREATE",
@@ -819,50 +876,6 @@ const updateAccount = async ({
   }
 };
 
-const createUser = async ({
-  account_id,
-  public_id,
-  given_name,
-  middle_name,
-  last_name,
-  department,
-  course,
-  year_level,
-  connection = pool,
-}) => {
-  account_id = normalize(account_id);
-  given_name = normalize(given_name) || "User";
-  middle_name = normalize(middle_name);
-  last_name = normalize(last_name);
-  public_id = normalize(public_id);
-  department = normalize(department);
-  course = normalize(course);
-  year_level = Number(year_level) || undefined;
-
-  if (!account_id) {
-    throw new AppError("BAD REQUEST!", 400, [
-      "Account id cannot be empty and must be numeric!",
-    ]);
-  }
-
-  await connection.query(
-    `INSERT INTO users(account_id, public_id, given_name, middle_name, last_name, department_id, course, year_level) 
-    VALUES(?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      account_id,
-      public_id,
-      given_name,
-      middle_name,
-      last_name,
-      department,
-      course,
-      year_level,
-    ],
-  );
-
-  return { success: true };
-};
-
 const getAccounts = async ({
   search,
   roles,
@@ -907,7 +920,7 @@ const getAccounts = async ({
     JOIN roles AS r ON r.id = accounts.role
     ${conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : ""}
     ORDER BY accounts.created_at DESC
-    ${limit && limit > 0 ? 'LIMIT ? OFFSET ?' : ''}
+    ${limit && limit > 0 ? "LIMIT ? OFFSET ?" : ""}
   `;
 
   const [rows] = await connection.query(sql, [...values, limit, offset]);
@@ -932,7 +945,7 @@ const getAccountsAnalytics = async ({ connection = pool }) => {
       COUNT(CASE WHEN is_disabled = 1 THEN 1 END) AS disabled_accounts
     FROM accounts
   `,
-    [ROLE.ADMIN, ROLE.SYS_ADMIN, ROLE.COUNSELOR, ROLE.CLIENT]
+    [ROLE.ADMIN, ROLE.SYS_ADMIN, ROLE.COUNSELOR, ROLE.CLIENT],
   );
 
   return { data: rows[0] };
@@ -1114,7 +1127,6 @@ const disableAccount = async ({
 };
 
 module.exports = {
-  createUser,
   registerAccount,
   createAccountWithGoogle,
   getAccounts,
@@ -1124,5 +1136,5 @@ module.exports = {
   disableAccount,
   batchRegisterAccounts,
   batchArchive,
-  getAccountsAnalytics
+  getAccountsAnalytics,
 };

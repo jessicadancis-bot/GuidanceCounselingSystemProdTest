@@ -2,6 +2,7 @@ const pool = require("../db");
 const puppeteer = require("puppeteer");
 const archiver = require("archiver");
 const { STATUS } = require("../config/serverConstants");
+const { DateTime } = require("luxon");
 
 const generateCaseReport = async ({ case_ids, connection = pool }) => {
   if (!Array.isArray(case_ids)) case_ids = [case_ids];
@@ -10,9 +11,10 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
     `
     SELECT cc.case_id, cc.notes, cc.outcome, s.name AS status_name, s.id AS status_id, client.given_name,
            client.middle_name, client.last_name,
-           c.name AS course, client.public_id,
+           c.name AS course, client.public_id, client.contact_number,
            client.year_level, cc.assessment, rci.reason,
-           rci.section
+           rci.section, DATE_FORMAT(client.birthdate, '%Y-%m-%d %H:%i:%s') AS birthdate, client.gender,
+           r.type, r.referred_by
     FROM counseling_cases AS cc
 	  JOIN counseling_requests AS r ON r.reference_id = cc.request_reference_id
     JOIN users AS client ON client.account_id = r.client_id
@@ -38,6 +40,10 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
     const fullName = [c.given_name, c.middle_name, c.last_name]
       .filter(Boolean)
       .join(" ");
+
+    const todayPh = DateTime.now().setZone("Asia/Manila");
+    const birthdate = DateTime.fromSQL(c.birthdate);
+    const age = todayPh.diff(birthdate, "years").years | 0;
 
     const html = `
       <html>
@@ -144,11 +150,26 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
           <div class="meta-label">Status</div>
           <div class="meta-value">${c.status_name || "Unknown"}</div>
 
-          <div class="meta-label">Student ID</div>
-          <div class="meta-value">${c.public_id || "N/A"}</div>
-
           <div class="meta-label">Client Name</div>
           <div class="meta-value">${fullName || "N/A"}</div>
+
+          <div class="meta-label">Gender</div>
+          <div class="meta-value">${c.gender || "N/A"}</div>
+
+          <div class="meta-label">Request type</div>
+          <div class="meta-value">${c.type || "N/A"}</div>
+
+          ${c.type === "referred" ? `<div class="meta-label">Referred by</div>
+          <div class="meta-value">${c.referred_by || "N/A"}</div>` : ''}
+
+          <div class="meta-label">Contact No.</div>
+          <div class="meta-value">${c.contact_number || "N/A"}</div>
+
+          <div class="meta-label">Age</div>
+          <div class="meta-value">${age || "N/A"}</div>
+
+          <div class="meta-label">Student ID</div>
+          <div class="meta-value">${c.public_id || "N/A"}</div>
 
           <div class="meta-label">Course</div>
           <div class="meta-value">${c.course || "N/A"}</div>
@@ -182,7 +203,8 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
       </div>
 
       ${
-      c.status_id === STATUS.TERMINATED ? `
+        c.status_id === STATUS.TERMINATED
+          ? `
       <div class="section">
         <div class="section-title">Session Outcome</div>
 
@@ -190,7 +212,8 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
       ${c.outcome || "No outcome was recorded for this ongoing case."}
         </div>
       </div>
-      ` : ``
+      `
+          : ``
       }
 
       <div class="footer">
@@ -265,8 +288,10 @@ const generateSessionReport = async ({
   if (!Array.isArray(case_ids)) case_ids = [case_ids];
 
   const [case_rows] = await connection.query(
-    `SELECT ccs.session_id, ccs.\`from\`, ccs.notes, ccs.case_id, ccs.assessment, ccs.intervention_plan, s.name AS status_name, s.id AS status_id, ccs.outcome
+    `SELECT ccs.session_id, ccs.\`from\`, ccs.notes, ccs.case_id, ccs.assessment, ccs.intervention_plan, 
+            s.name AS status_name, s.id AS status_id, ccs.outcome, ccs.session_type, ctp.name AS mode
      FROM counseling_case_sessions AS ccs
+     LEFT JOIN counseling_type AS ctp ON ctp.id = ccs.mode
      LEFT JOIN status AS s ON s.id = ccs.status
      WHERE ccs.case_id IN (?)`,
     [case_ids],
@@ -308,6 +333,16 @@ const generateSessionReport = async ({
             <div class="meta-value">${c.session_id}</div>
           </div>
 
+           <div class="meta-row">
+            <div class="meta-label">Session Type:</div>
+            <div class="meta-value">${c.session_type}</div>
+          </div>
+
+             <div class="meta-row">
+            <div class="meta-label">Mode:</div>
+            <div class="meta-value">${c.mode}</div>
+          </div>
+
           <div class="meta-row">
             <div class="meta-label">Date:</div>
             <div class="meta-value">${new Date(c.from).toLocaleDateString()}</div>
@@ -341,14 +376,16 @@ const generateSessionReport = async ({
         </div>
 
         ${
-          c.status_id === STATUS.TERMINATED ? `
+          c.status_id === STATUS.TERMINATED
+            ? `
           <div class="section">
             <div class="section-title">Session Outcome</div>
             <div class="content-box">
               ${c.outcome || "No outcome was recorded for this ongoing session."}
             </div>
           </div>
-          ` : ``
+          `
+            : ``
         }
 
         <div class="footer">

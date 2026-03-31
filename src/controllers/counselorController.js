@@ -84,6 +84,7 @@ const createCounselingCaseSessionHandler = async (req, res, next) => {
       counselor_id: req.user?.accountId,
       meeting_date: req.body.meeting_date,
       meeting_time: req.body.meeting_time,
+      mode: req.body.mode,
       notes: req.body.notes,
     });
 
@@ -148,6 +149,8 @@ const getCounselorCasesHandler = async (req, res, next) => {
         next_meeting,
         next_meeting_end,
         case_role,
+        request_type,
+        referred_by,
         collaborator_count
       }) => {
         return {
@@ -178,6 +181,8 @@ const getCounselorCasesHandler = async (req, res, next) => {
           next_meeting,
           next_meeting_end,
           case_role,
+          request_type,
+          referred_by,
           collaborator_count
         };
       },
@@ -588,6 +593,9 @@ const createCaseForHandler = async (req, res, next) => {
       start_date: req.body?.start_date,
       start_time: req.body?.start_time,
       counseling_type: req.body?.counseling_type,
+      type: req.body?.type,
+      mode: req.body?.mode,
+      referred_by: req.body?.referred_by,
       reason: req.body?.reason
     });
 

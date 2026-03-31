@@ -356,6 +356,8 @@ const registerAccountHandler = async (req, res, next) => {
       course: req.body?.course,
       year_level: req.body?.year_level,
       role: req.body?.role,
+      birth_date: req.body?.birthdate,
+      gender: req.body?.gender,
       department: req.body?.department
     });
 

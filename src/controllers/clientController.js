@@ -11,6 +11,7 @@ const requestCounselingHandler = async (req, res, next) => {
       preferred_date: req.body?.preferred_date,
       preferred_time: req.body?.preferred_time,
       questionaire_answers: req.body?.questionaire_answers,
+      type: "requested",
       request_type: REQUEST_TYPE.SELF_REQUEST
     });
 

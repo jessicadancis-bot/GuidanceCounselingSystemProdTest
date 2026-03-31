@@ -233,10 +233,12 @@ const requestCounseling = async ({
   counseling_type,
   preferred_date,
   preferred_time,
+  type,
   connection,
 }) => {
   counseling_type = Number(counseling_type);
   account_id = normalize(account_id);
+  type = normalize(type);
   user_informations =
     typeof user_informations !== "object" ? {} : user_informations;
   questionaire_answers =
@@ -260,6 +262,14 @@ const requestCounseling = async ({
 
   const validations = [
     { check: !user_informations.section, message: "Section must be provided" },
+    {
+      check: !type,
+      message: "Type of request must be provided",
+    },
+    {
+      check: type && !["referred", "requested"].includes(type),
+      message: "Type of request must be either 'referred' or 'requested'",
+    },
     {
       check:
         user_informations.reason &&
@@ -320,6 +330,7 @@ const requestCounseling = async ({
       "preferred_counseling_type",
       "status",
       "preferred_date",
+      "type"
     ];
     const values = [
       reference_id,
@@ -327,6 +338,7 @@ const requestCounseling = async ({
       counseling_type,
       STATUS.PENDING,
       preferred_ph.toFormat("yyyy-LL-dd HH:mm:ss"),
+      type
     ];
 
     const placeholders = columns.map(() => "?").join(",");
@@ -544,6 +556,9 @@ const getCases = async ({
 
       cc.case_id,
       cc.request_reference_id,
+
+      request.type AS request_type,
+      request.referred_by,
 
       DATE_FORMAT(cc.created_at, '%Y-%m-%d %H:%i:%s') AS created_at,
       DATE_FORMAT(cc.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at,
@@ -1032,7 +1047,8 @@ const acceptCounselingRequest = async ({
 
   try {
     const [request_rows] = await connection.query(
-      `SELECT DATE_FORMAT(preferred_date, '%Y-%m-%d %H:%i:%s') AS preferred_date, client_id, reference_id
+      `SELECT DATE_FORMAT(preferred_date, '%Y-%m-%d %H:%i:%s') AS preferred_date, 
+              client_id, reference_id, preferred_counseling_type
        FROM counseling_requests
        WHERE reference_id = ? AND status = ?
        LIMIT 1
@@ -1087,6 +1103,7 @@ const acceptCounselingRequest = async ({
         counselor_id,
         meeting_date: meeting_date,
         meeting_time: meeting_time,
+        mode: request.preferred_counseling_type,
         connection,
       });
     }
@@ -1108,11 +1125,13 @@ const createCounselingCaseSession = async ({
   meeting_date,
   meeting_time,
   notes,
+  mode,
   connection,
 }) => {
   case_id = normalize(case_id);
   counselor_id = normalize(counselor_id);
   notes = normalize(notes);
+  mode = Number(mode);
 
   const meeting_date_ph = DateTime.fromISO(`${meeting_date}T${meeting_time}`, {
     zone: "Asia/Manila",
@@ -1127,6 +1146,7 @@ const createCounselingCaseSession = async ({
   const session_end_ph = meeting_date_ph.plus({ hours: 1 });
 
   const validations = [
+    { check: !mode, message: "Session mode must be provided, Either virtual or face to face" },
     { check: !case_id, message: "case id must be provided!" },
     { check: !counselor_id, message: "counselor id must be provided!" },
     {
@@ -1206,14 +1226,23 @@ const createCounselingCaseSession = async ({
       );
     }
 
+    const [session_row_count] = await connection.query(`
+      SELECT COUNT(*) AS total_session
+      FROM counseling_case_sessions
+      WHERE case_id = ?
+      LIMIT 2
+    `, [case_id]);
+
+    const total_session = session_row_count?.length || 0;
+
     const meeting_date_db = meeting_date_ph.toFormat("yyyy-LL-dd HH:mm:ss");
     const session_end_db = session_end_ph.toFormat("yyyy-LL-dd HH:mm:ss");
 
     const session_id = await generateCaseSessionID({ case_id, connection });
     await connection.query(
       `INSERT INTO counseling_case_sessions
-       (session_id, case_id, notes, status, \`from\`, \`to\`)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       (session_id, case_id, notes, status, \`from\`, \`to\`, session_type, mode)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         session_id,
         case_id,
@@ -1221,6 +1250,8 @@ const createCounselingCaseSession = async ({
         STATUS.ONGOING,
         meeting_date_db,
         session_end_db,
+        total_session >= 1 ? "follow_up" : "initial",
+        mode
       ],
     );
 
@@ -1627,13 +1658,14 @@ const getCaseSessions = async ({
 
   const [rows] = await connection.query(
     `
-    SELECT ccs.session_id,  DATE_FORMAT(ccs.created_at, '%Y-%m-%d %H:%i:%s') as created_at, 
+    SELECT ccs.session_id,  DATE_FORMAT(ccs.created_at, '%Y-%m-%d %H:%i:%s') as created_at, ctp.name AS mode_name, ctp.id AS mode_id,
       ccs.assessment, ccs.intervention_plan,
       s.name AS status_name, s.id AS status_id, DATE_FORMAT(ccs.\`from\`, '%Y-%m-%d %H:%i:%s') AS meeting_date,
       ccs.notes, ccs.outcome, 
       DATE_FORMAT(ccs.updated_at, '%Y-%m-%d %H:%i:%s') AS updated_at, ccs.case_id,
       svr.room_id
     FROM counseling_case_sessions AS ccs
+    LEFT JOIN counseling_type AS ctp ON ctp.id = ccs.mode
     JOIN status AS s 
       ON s.id = ccs.status
     LEFT JOIN (
@@ -2478,9 +2510,7 @@ const getSessionAttachments = async ({
     [session_id],
   );
 
-  const session = session_rows[0];
-
-  if (session.length === 0) {
+  if (session_rows.length === 0) {
     throw new AppError(
       "Could not find the case you are trying to perfrom the action to.",
     );
@@ -2689,13 +2719,14 @@ const getSessionAttachedVirtualRooms = async ({
     [session_id],
   );
 
-  const session = session_rows[0];
 
-  if (session.length === 0) {
+  if (session_rows.length === 0) {
     throw new AppError(
       "Could not find the case you are trying to perfrom the action to.",
     );
   }
+
+  const session = session_rows[0];
 
   // const [case_collaborators_rows] = await connection.query(
   //   `
@@ -2763,12 +2794,16 @@ const createCaseFor = async ({
   start_time,
   counseling_type,
   reason,
+  type,
+  referred_by,
   connection,
 }) => {
   reason = normalize(reason);
   client_id = normalize(client_id);
   account_id = normalize(account_id);
   counseling_type = Number(counseling_type);
+  referred_by = normalize(referred_by);
+  type = normalize(type);
 
   const meeting_date_ph = DateTime.fromISO(`${start_date}T${start_time}`, {
     zone: "Asia/Manila",
@@ -2785,6 +2820,18 @@ const createCaseFor = async ({
     {
       check: !client_id,
       message: "Client id must be provided",
+    },
+    {
+      check: type === "referred" && !referred_by,
+      message: "Referrer name must be provided"
+    },
+    {
+      check: !type,
+      message: "Type of counseling must be provided",
+    },
+    {
+      check: type && !["referred", "requested"].includes(type),
+      message: "Type of request must be either 'referred' or 'requested'",
     },
     {
       check: !counseling_type,
@@ -2843,8 +2890,8 @@ const createCaseFor = async ({
 
     await connection.query(
       `
-        INSERT INTO counseling_requests (reference_id, client_id, status, preferred_date, preferred_counseling_type)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO counseling_requests (reference_id, client_id, status, preferred_date, preferred_counseling_type, type, referred_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `,
       [
         reference_id,
@@ -2852,6 +2899,8 @@ const createCaseFor = async ({
         STATUS.APPROVED,
         meeting_date_db,
         counseling_type,
+        type,
+        referred_by ?? null
       ],
     );
 
@@ -2888,6 +2937,8 @@ const createCaseFor = async ({
       counselor_id: account_id,
       meeting_date,
       meeting_time,
+      counseling_type,
+      mode: counseling_type,
       connection,
     });
 
