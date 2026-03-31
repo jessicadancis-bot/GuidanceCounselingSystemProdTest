@@ -1235,7 +1235,7 @@ const createCounselingCaseSession = async ({
         false,
         case_id,
         case_data.client_id,
-        meeting_date,
+        meeting_date_db,
         false,
         case_id,
       ],
