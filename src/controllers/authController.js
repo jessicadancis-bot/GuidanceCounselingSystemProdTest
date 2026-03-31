@@ -85,7 +85,7 @@ const requestPasswordResetHandler = async (req, res, next) => {
     const resetLink = `${process.env.PASSWORD_RESET_URL}?token=${results.reset_token}`;
     try {
       await sendEmail(
-        process.env.SMTP_USER || results?.email,
+        results?.email,
         "Password Reset",
         `Click this link to reset your password (expires in 15 minutes): ${resetLink}`
       );

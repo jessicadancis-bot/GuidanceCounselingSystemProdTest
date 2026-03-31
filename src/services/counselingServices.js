@@ -271,7 +271,7 @@ const requestCounseling = async ({
         preferred_ph &&
         (preferred_date_only < today_ph ||
           preferred_date_only > max_allowed_ph),
-      message: "Preferred date must be today or after today and within 14 days.",
+      message: "Preferred date and time must be within the next 14 days and cannot be in the past.",
     },
     {
       check:
@@ -1226,16 +1226,18 @@ const createCounselingCaseSession = async ({
 
     await connection.query(
       `
-      INSERT INTO schedules (account_id, schedule_time, reminder_sent)
-      VALUES (?, ?, ?), (?, ?, ?)
+      INSERT INTO schedules (account_id, schedule_time, reminder_sent, case_id)
+      VALUES (?, ?, ?, ?), (?, ?, ?, ?)
     `,
       [
         counselor_id,
         meeting_date_db,
         false,
+        case_id,
         case_data.client_id,
         meeting_date,
         false,
+        case_id,
       ],
     );
 
@@ -1541,7 +1543,7 @@ const updateCounselorCaseSession = async ({
       `;
 
       sendEmail(
-        process.env.SMTP_USER || client.email,
+        client.email,
         "Session Rescheduled",
         html_body,
       );

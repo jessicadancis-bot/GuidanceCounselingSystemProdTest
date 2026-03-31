@@ -1,5 +1,6 @@
 //sysadmin
 const fs = require("fs");
+const pLimit = require("p-limit");
 const {
   archiveAccount,
   getAccounts,
@@ -39,6 +40,7 @@ const { parseCSV } = require("../utils/csvHelper");
 const { sendEmail } = require("../utils/emails");
 const { ROLE } = require("../config/serverConstants");
 const { backupDatabase } = require("../services/dbServices");
+const { chunkArray } = require("../utils/ArrayHelper");
 
 const createRoleHandler = async (req, res, next) => {
   try {
@@ -364,7 +366,7 @@ const registerAccountHandler = async (req, res, next) => {
       `;
 
     sendEmail(
-      process.env.SMTP_USER || results?.data?.email,
+      results?.data?.email,
       "CCT Guidance Account registration",
       email_body,
     ).catch((err) =>
@@ -386,30 +388,14 @@ const batchRegisterAccountsHandler = async (req, res, next) => {
       payload: accounts,
       batch_role: ROLE.CLIENT,
       batch_department: req.body?.department,
-      batch_course: req.body.course
+      batch_course: req.body.course,
     });
 
     await fs.promises.unlink(req.file.path);
 
     const acc_cred = results.inserted_cred || [];
 
-    acc_cred.forEach(({ email, password }) => {
-      const email_body = `
-        <p>Your account has been registered to CCTGuidanceSystem. Please use the following credentials to login</p>
-        <p>Email: ${email}</p>
-        <p>Password: ${password}</p>
-      `;
-
-      sendEmail(
-        process.env.SMTP_USER || email,
-        "CCT Guidance Account registration",
-        email_body,
-      ).catch((err) =>
-        console.error(`Sending email to ${email} had failed`, err),
-      );
-    });
-
-    return res.status(201).json({
+    res.status(201).json({
       results: {
         success_total: results.success_total,
         failed_total: results.failed_total,
@@ -417,6 +403,36 @@ const batchRegisterAccountsHandler = async (req, res, next) => {
         failed: results.failed,
       },
     });
+
+    const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+    const limit = pLimit(5);
+
+    for (const chunk of chunkArray(acc_cred, 5)) {
+      await Promise.all(
+        chunk.map(({ email, password }) =>
+          limit(async () => {
+            const email_body = `
+              <p>Your account has been registered to CCTGuidanceSystem. Please use the following credentials to login</p>
+              <p>Email: ${email}</p>
+              <p>Password: ${password}</p>
+            `;
+            try {
+              await sendEmail(process.env.SMTP_USER || email, "CCT Guidance Account registration", email_body);
+            } catch (err) {
+              console.error(`Retrying: ${email}`, err);
+              try {
+                await sendEmail(process.env.SMTP_USER || email, "CCT Guidance Account registration", email_body);
+              } catch (err2) {
+                console.error(`Failed permanently: ${email}`, err2);
+              }
+            }
+          })
+        )
+      );
+
+      await delay(1000);
+    }
   } catch (e) {
     return next(e);
   }
