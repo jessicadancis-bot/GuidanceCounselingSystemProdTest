@@ -695,6 +695,7 @@ const getCases = async ({
       outcome: decryptCaseField(c.outcome),
       notes: decryptCaseField(c.notes),
       assessment: decryptCaseField(c.assessment),
+      reason: decryptCaseField(c.reason)
     };
   });
 
