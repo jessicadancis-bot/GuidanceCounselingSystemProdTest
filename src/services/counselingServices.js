@@ -2874,7 +2874,7 @@ const createCaseFor = async ({
     },
     { check: !account_id, message: "Counselor id must be provided!" },
     {
-      check: meeting_date_ph && meeting_date_ph > max_allowed_ph,
+      check: meeting_date_ph && (meeting_date_ph < today_ph || meeting_date_ph > max_allowed_ph),
       message: "Preferred date and time must be within the next 14 days.",
     },
     {
