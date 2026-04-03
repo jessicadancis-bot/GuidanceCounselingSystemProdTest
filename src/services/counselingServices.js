@@ -632,17 +632,17 @@ const getCases = async ({
       ON client.account_id = request.client_id
     LEFT JOIN courses AS c
       ON c.id = client.course
-    JOIN severity_levels AS sl
+    LEFT JOIN severity_levels AS sl
       ON sl.id = cc.severity_level
-    JOIN counseling_type AS cst 
+    LEFT JOIN counseling_type AS cst 
       ON cst.id = request.preferred_counseling_type
-    JOIN (
+    LEFT JOIN (
       SELECT counselor_id, case_id
       FROM case_collaborators
       WHERE role = 'head'
     ) AS collaborator
       ON collaborator.case_id = cc.case_id
-    JOIN users AS counselor 
+    LEFT JOIN users AS counselor 
       ON counselor.account_id = collaborator.counselor_id
 
     LEFT JOIN (
@@ -1080,7 +1080,8 @@ const acceptCounselingRequest = async ({
        FROM counseling_requests
        WHERE reference_id = ? AND status = ?
        LIMIT 1
-       FOR UPDATE`,
+       FOR UPDATE
+       `,
       [request_reference_id, STATUS.PENDING],
     );
 
@@ -2908,11 +2909,11 @@ const createCaseFor = async ({
       [client_id],
     );
 
-    const user = user_rows[0];
-
-    if (!user_rows) {
+    if (user_rows?.length === 0) {
       throw new AppError("Could not proceed with your request.");
     }
+
+    const user = user_rows[0];
 
     if (user.role !== ROLE.CLIENT) {
       throw new AppError("Could not proceed with your request");
@@ -2932,7 +2933,7 @@ const createCaseFor = async ({
       [
         reference_id,
         user.account_id,
-        STATUS.APPROVED,
+        STATUS.PENDING,
         meeting_date_db,
         counseling_type,
         type,
@@ -2947,35 +2948,10 @@ const createCaseFor = async ({
       [reference_id, encryptCaseField(reason)],
     );
 
-    const case_id = await generateCaseID({ reference_id: reference_id });
-
-    await connection.query(
-      `
-        INSERT INTO counseling_cases (request_reference_id, status, case_id)
-        VALUES (?, ?, ?)
-      `,
-      [reference_id, STATUS.ONGOING, case_id],
-    );
-
-    await connection.query(
-      `
-      INSERT INTO case_collaborators (case_id, counselor_id, role)
-      VALUES (?, ?, ?)  
-    `,
-      [case_id, account_id, "head"],
-    );
-
-    const meeting_date = meeting_date_ph.toFormat("yyyy-LL-dd");
-    const meeting_time = meeting_date_ph.toFormat("HH:mm");
-
-    await createCounselingCaseSession({
-      case_id,
+    await acceptCounselingRequest({
+      request_reference_id: reference_id,
       counselor_id: account_id,
-      meeting_date,
-      meeting_time,
-      counseling_type,
-      mode: counseling_type,
-      connection,
+      connection
     });
 
     if (self_conn) await connection.commit();

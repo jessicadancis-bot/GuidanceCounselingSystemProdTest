@@ -14,6 +14,8 @@ const pool = mysql.createPool({
 pool.on("connection", async (conn) => {
   try {
     await conn.promise().query("SET time_zone = '+08:00'");
+
+    await conn.promise().query("SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED");
   } catch (err) {
     console.error("Failed to set MySQL timezone:", err);
   }
