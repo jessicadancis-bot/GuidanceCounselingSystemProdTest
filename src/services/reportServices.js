@@ -3,6 +3,7 @@ const puppeteer = require("puppeteer");
 const archiver = require("archiver");
 const { STATUS } = require("../config/serverConstants");
 const { DateTime } = require("luxon");
+const { decryptCaseField } = require("../utils/Encryptor");
 
 const generateCaseReport = async ({ case_ids, connection = pool }) => {
   if (!Array.isArray(case_ids)) case_ids = [case_ids];
@@ -190,7 +191,7 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
         <div class="section-title">Case Notes</div>
 
         <div class="content-box">
-      ${c.notes || "No notes were recorded for this case."}
+      ${decryptCaseField(c.notes) || "No notes were recorded for this case."}
         </div>
       </div>
 
@@ -198,7 +199,7 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
         <div class="section-title">Counselor Assessment</div>
 
         <div class="content-box">
-      ${c.assessment || "No assessment was recorded."}
+      ${decryptCaseField(c.assessment) || "No assessment was recorded."}
         </div>
       </div>
 
@@ -209,7 +210,7 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
         <div class="section-title">Session Outcome</div>
 
         <div class="content-box">
-      ${c.outcome || "No outcome was recorded for this ongoing case."}
+      ${decryptCaseField(c.outcome) || "No outcome was recorded for this ongoing case."}
         </div>
       </div>
       `
@@ -357,21 +358,21 @@ const generateSessionReport = async ({
         <div class="section">
           <div class="section-title">Notes</div>
           <div class="content-box">
-            ${c.notes || "No notes were recorded for this session."}
+            ${decryptCaseField(c.notes) || "No notes were recorded for this session."}
           </div>
         </div>
 
         <div class="section">
           <div class="section-title">Assessment</div>
           <div class="content-box">
-            ${c.assessment || "No assessment was recorded for this session."}
+            ${decryptCaseField(c.assessment) || "No assessment was recorded for this session."}
           </div>
         </div>
 
         <div class="section">
           <div class="section-title">Intervention Plan</div>
           <div class="content-box">
-            ${c.intervention_plan || "No intervention plan was recorded for this session."}
+            ${decryptCaseField(c.intervention_plan) || "No intervention plan was recorded for this session."}
           </div>
         </div>
 
