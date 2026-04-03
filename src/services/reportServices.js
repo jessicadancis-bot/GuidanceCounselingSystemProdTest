@@ -182,7 +182,7 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
           <div class="meta-value">${c.section || "N/A"}</div>
 
           <div class="meta-label">Reason for Counseling</div>
-          <div class="meta-value">${c.reason || "Not specified"}</div>
+          <div class="meta-value">${decryptCaseField(c.reason) || "Not specified"}</div>
 
         </div>
       </div>
@@ -440,7 +440,6 @@ const generateIntakeQuestionnaireReport = async ({
     [case_ids],
   );
 
-  /** group by case */
   const case_answer_sheet = {};
 
   question_rows.forEach((q) => {
@@ -462,7 +461,6 @@ const generateIntakeQuestionnaireReport = async ({
     });
   });
 
-  /** pdf buffers per case */
   const intake_buffers = {};
 
   for (const case_id of Object.keys(case_answer_sheet)) {
@@ -559,7 +557,7 @@ const generateIntakeQuestionnaireReport = async ({
               (q, i) => `
                 <div class="question-block">
                   <div class="question">${i + 1}. ${q.question}</div>
-                  <div class="answer">${q.answer || "—"}</div>
+                  <div class="answer">${decryptCaseField(q.answer) || "—"}</div>
                 </div>
               `,
             )
