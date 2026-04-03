@@ -262,6 +262,10 @@ const requestCounseling = async ({
   const min_allowed_ph = today_ph.plus({ minutes: 30 });
 
   const validations = [
+    {
+      check: ![0, 30].includes(preferred_ph.minute),
+      message: "Preferred time must be at the hour or half-hour (e.g., 8:00, 8:30)."
+    },
     { check: !user_informations.section, message: "Section must be provided" },
     {
       check: !type,
