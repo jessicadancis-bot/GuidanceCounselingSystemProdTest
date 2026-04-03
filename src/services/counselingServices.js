@@ -2811,7 +2811,7 @@ const getCounselingSchedules = async ({ account_id, connection = pool }) => {
 
   const [session_rows] = await connection.query(
     `
-    SELECT ccs.session_id, ccs.from, ccs.to
+    SELECT ccs.session_id, DATE_FORMAT(ccs.from, '%Y-%m-%d %H:%i:%s') AS from, DATE_FORMAT(ccs.to, '%Y-%m-%d %H:%i:%s') AS to
     FROM case_collaborators AS cclb
     LEFT JOIN counseling_case_sessions AS ccs ON ccs.case_id = cclb.case_id
     WHERE cclb.counselor_id = ? AND ccs.status = ?
