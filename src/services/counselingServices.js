@@ -258,8 +258,8 @@ const requestCounseling = async ({
   });
 
   const today_ph = DateTime.now().setZone("Asia/Manila");
-  const preferred_date_only = preferred_ph.startOf("day");
   const max_allowed_ph = today_ph.plus({ days: 14 });
+  const min_allowed_ph = today_ph.plus({ minutes: 30 });
 
   const validations = [
     { check: !user_informations.section, message: "Section must be provided" },
@@ -280,9 +280,9 @@ const requestCounseling = async ({
     {
       check:
         preferred_ph &&
-        (preferred_ph < today_ph || preferred_date_only > max_allowed_ph),
+        (preferred_ph < min_allowed_ph || preferred_ph > max_allowed_ph),
       message:
-        "Preferred date and time must be within the next 14 days and cannot be in the past.",
+        "Preferred date must be 30 min ahead of schedule and  within the next 14 days.",
     },
     {
       check:
