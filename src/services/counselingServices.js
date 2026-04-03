@@ -2943,7 +2943,7 @@ const createCaseFor = async ({
       `INSERT INTO request_client_informations
        (request_reference_id, reason)
        VALUES (?, ?)`,
-      [reference_id, reason],
+      [reference_id, encryptCaseField(reason)],
     );
 
     const case_id = await generateCaseID({ reference_id: reference_id });
