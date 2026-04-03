@@ -17,6 +17,7 @@ const {
   notifyCaseUpdate,
 } = require("../websocket");
 const { sendEmail } = require("../utils/emails");
+const { encryptCaseField, decryptCaseField } = require("../utils/Encryptor");
 
 const referClient = async ({
   referrer_name,
@@ -330,7 +331,7 @@ const requestCounseling = async ({
       "preferred_counseling_type",
       "status",
       "preferred_date",
-      "type"
+      "type",
     ];
     const values = [
       reference_id,
@@ -338,7 +339,7 @@ const requestCounseling = async ({
       counseling_type,
       STATUS.PENDING,
       preferred_ph.toFormat("yyyy-LL-dd HH:mm:ss"),
-      type
+      type,
     ];
 
     const placeholders = columns.map(() => "?").join(",");
@@ -353,7 +354,7 @@ const requestCounseling = async ({
       for (const [question_text, ans] of Object.entries(
         questionaire_filled.answer_map,
       )) {
-        crq_a_values.push([reference_id, question_text, ans]);
+        crq_a_values.push([reference_id, question_text, encryptCaseField(ans)]);
       }
 
       await connection.query(
@@ -370,7 +371,7 @@ const requestCounseling = async ({
       [
         reference_id,
         user_informations.section,
-        user_informations.reason || null,
+        encryptCaseField(user_informations.reason) || null,
       ],
     );
 
@@ -684,7 +685,16 @@ const getCases = async ({
   const total = case_rows[0]?.total_count;
   const total_pages = limit ? Math.ceil(total / limit) : 1;
 
-  return { data: case_rows, total, total_pages, page };
+  const data = case_rows?.map((c) => {
+    return {
+      ...c,
+      outcome: decryptCaseField(c.outcome),
+      notes: decryptCaseField(c.notes),
+      assessment: decryptCaseField(c.assessment),
+    };
+  });
+
+  return { data, total, total_pages, page };
 };
 
 const terminateCounselorCase = async ({
@@ -769,7 +779,12 @@ const terminateCounselorCase = async ({
         SET status = ?, outcome = ?
         WHERE case_id = ? AND status = ?
       `,
-      [STATUS.TERMINATED, outcome, case_id, STATUS.ONGOING],
+      [
+        STATUS.TERMINATED,
+        encryptCaseField(outcome || ""),
+        case_id,
+        STATUS.ONGOING,
+      ],
     );
 
     if (self_conn) await connection.commit();
@@ -858,7 +873,7 @@ const terminateCounselorCaseSession = async ({
           c.updated_at = NOW()
       WHERE s.case_id = ? AND s.session_id = ? AND s.status = ?;
       `,
-      [STATUS.TERMINATED, outcome, case_id, session_id, STATUS.ONGOING],
+      [STATUS.TERMINATED, encryptCaseField(outcome), case_id, session_id, STATUS.ONGOING],
     );
 
     if (self_conn) await connection.commit();
@@ -913,7 +928,10 @@ const getIntakeForm = async ({ request_reference_id, connection = pool }) => {
     [request_reference_id],
   );
 
-  const data = { questions: question_rows, client: user_rows[0] };
+  const question_data = question_rows?.map((q) => {
+    return { ...q, answer: decryptCaseField(q.answer) };
+  });
+  const data = { questions: question_data, client: user_rows[0] };
 
   return { data: data };
 };
@@ -1008,7 +1026,12 @@ const getCounselingRequests = async ({
   const total = rows[0]?.total_count;
   const total_pages = limit ? Math.ceil(total / limit) : 1;
 
-  return { data: rows, total, page, limit, total_pages };
+  const data = rows.map((c) => ({
+    ...c,
+    reason: c.reason ? decryptCaseField(c.reason) : "",
+  }));
+
+  return { data, total, page, limit, total_pages };
 };
 
 const acceptCounselingRequest = async ({
@@ -1146,7 +1169,10 @@ const createCounselingCaseSession = async ({
   const session_end_ph = meeting_date_ph.plus({ hours: 1 });
 
   const validations = [
-    { check: !mode, message: "Session mode must be provided, Either virtual or face to face" },
+    {
+      check: !mode,
+      message: "Session mode must be provided, Either virtual or face to face",
+    },
     { check: !case_id, message: "case id must be provided!" },
     { check: !counselor_id, message: "counselor id must be provided!" },
     {
@@ -1226,12 +1252,15 @@ const createCounselingCaseSession = async ({
       );
     }
 
-    const [session_row_count] = await connection.query(`
+    const [session_row_count] = await connection.query(
+      `
       SELECT COUNT(*) AS total_session
       FROM counseling_case_sessions
       WHERE case_id = ?
       LIMIT 2
-    `, [case_id]);
+    `,
+      [case_id],
+    );
 
     const total_session = session_row_count?.length || 0;
 
@@ -1251,7 +1280,7 @@ const createCounselingCaseSession = async ({
         meeting_date_db,
         session_end_db,
         total_session >= 1 ? "follow_up" : "initial",
-        mode
+        mode,
       ],
     );
 
@@ -1260,11 +1289,7 @@ const createCounselingCaseSession = async ({
         INSERT INTO schedules (schedule_time, reminder_sent, case_id)
         VALUES (?, ?, ?)
       `,
-      [
-        meeting_date_db,
-        false,
-        case_id
-      ],
+      [meeting_date_db, false, case_id],
     );
 
     if (self_conn) await connection.commit();
@@ -1331,12 +1356,12 @@ const updateCounselorCase = async ({
 
   if (notes !== undefined) {
     to_update.push("cc.notes = ?");
-    to_update_value.push(notes || null);
+    to_update_value.push(encryptCaseField(notes) || null);
   }
 
   if (assessment !== undefined) {
     to_update.push("cc.assessment = ?");
-    to_update_value.push(assessment || null);
+    to_update_value.push(encryptCaseField(assessment) || null);
   }
 
   if (severity_level !== undefined) {
@@ -1466,17 +1491,17 @@ const updateCounselorCaseSession = async ({
 
   if (notes !== undefined) {
     to_update.push("notes = ?");
-    to_update_values.push(notes);
+    to_update_values.push(encryptCaseField(notes));
   }
 
   if (assessment !== undefined) {
     to_update.push("assessment = ?");
-    to_update_values.push(assessment);
+    to_update_values.push(encryptCaseField(assessment));
   }
 
   if (intervention_plan !== undefined) {
     to_update.push("intervention_plan = ?");
-    to_update_values.push(intervention_plan);
+    to_update_values.push(encryptCaseField(intervention_plan));
   }
 
   if (preferred_dt) {
@@ -1545,10 +1570,7 @@ const updateCounselorCaseSession = async ({
           SET schedule_time = ?, reminder_sent = FALSE
           WHERE case_id = ?
         `,
-        [
-          preferred_dt.toFormat("yyyy-LL-dd HH:mm:ss"),
-          case_id,
-        ],
+        [preferred_dt.toFormat("yyyy-LL-dd HH:mm:ss"), case_id],
       );
     }
 
@@ -1690,7 +1712,17 @@ const getCaseSessions = async ({
     [...wc_value, STATUS.ONGOING],
   );
 
-  return { data: rows };
+  const data = rows?.map((s) => {
+    return {
+      ...s,
+      notes: decryptCaseField(s.notes),
+      assessment: decryptCaseField(s.assessment),
+      outcome: decryptCaseField(s.outcome),
+      intervention_plan: decryptCaseField(s.intervention_plan)
+    };
+  });
+
+  return { data };
 };
 
 const addCounselingQuestion = async ({
@@ -2719,7 +2751,6 @@ const getSessionAttachedVirtualRooms = async ({
     [session_id],
   );
 
-
   if (session_rows.length === 0) {
     throw new AppError(
       "Could not find the case you are trying to perfrom the action to.",
@@ -2823,7 +2854,7 @@ const createCaseFor = async ({
     },
     {
       check: type === "referred" && !referred_by,
-      message: "Referrer name must be provided"
+      message: "Referrer name must be provided",
     },
     {
       check: !type,
@@ -2900,7 +2931,7 @@ const createCaseFor = async ({
         meeting_date_db,
         counseling_type,
         type,
-        referred_by ?? null
+        referred_by ?? null,
       ],
     );
 

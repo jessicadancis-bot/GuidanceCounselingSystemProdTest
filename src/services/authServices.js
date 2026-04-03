@@ -272,12 +272,13 @@ const resetPassword = async ({
   }
 
   try {
+    const incoming_hash = crypto.createHash("sha256").update(reset_token).digest("hex");
     const [rows] = await connection.query(
       `SELECT account_id 
        FROM password_resets 
        WHERE token = ? 
-       AND expires_at > NOW()`,
-      [reset_token]
+       AND expires_at > NOW() FOR UPDATE`,
+      [incoming_hash]
     );
 
     if (rows.length === 0) {
@@ -350,10 +351,12 @@ const requestPasswordReset = async ({ account_email, connection }) => {
     );
 
     const token = crypto.randomBytes(20).toString("hex");
+    const token_hash = crypto.createHash("sha256").update(token).digest("hex");
+
     await connection.query(
       `INSERT INTO password_resets (account_id, token, expires_at)
        VALUES (?, ?, NOW() + INTERVAL 15 MINUTE)`,
-      [account_id, token]
+      [account_id, token_hash]
     );
 
     if (self_conn) await connection.commit();
