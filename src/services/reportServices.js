@@ -4,6 +4,7 @@ const archiver = require("archiver");
 const { STATUS } = require("../config/serverConstants");
 const { DateTime } = require("luxon");
 const { decryptCaseField } = require("../utils/Encryptor");
+const { escapeHTML } = require("../utils/htmlHelper");
 
 const generateCaseReport = async ({ case_ids, connection = pool }) => {
   if (!Array.isArray(case_ids)) case_ids = [case_ids];
@@ -11,16 +12,17 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
   const [case_rows] = await connection.query(
     `
     SELECT cc.case_id, cc.notes, cc.outcome, s.name AS status_name, s.id AS status_id, client.given_name,
-           client.middle_name, client.last_name,
-           c.name AS course, client.public_id, client.contact_number,
+           client.middle_name, client.last_name, client.contact_number, acc.email,
+           c.name AS course, client.public_id,
            client.year_level, cc.assessment, rci.reason,
            rci.section, DATE_FORMAT(client.birthdate, '%Y-%m-%d %H:%i:%s') AS birthdate, client.gender,
            r.type, r.referred_by
     FROM counseling_cases AS cc
-	  JOIN counseling_requests AS r ON r.reference_id = cc.request_reference_id
+    JOIN counseling_requests AS r ON r.reference_id = cc.request_reference_id
     JOIN users AS client ON client.account_id = r.client_id
+    JOIN accounts AS acc ON acc.account_id = r.client_id
     LEFT JOIN request_client_informations AS rci ON rci.request_reference_id = r.reference_id
-	  LEFT JOIN courses AS c ON c.id = client.course
+    LEFT JOIN courses AS c ON c.id = client.course
     LEFT JOIN status AS s ON s.id = cc.status
     WHERE cc.case_id IN (?)
     `,
@@ -43,163 +45,380 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
       .join(" ");
 
     const todayPh = DateTime.now().setZone("Asia/Manila");
-    const birthdate = DateTime.fromSQL(c.birthdate);
-    const age = todayPh.diff(birthdate, "years").years | 0;
+
+    const birthdateObj = DateTime.fromSQL(c.birthdate, { zone: "Asia/Manila" });
+    const birthdateFormatted = birthdateObj.isValid
+      ? birthdateObj.toFormat("MMMM dd, yyyy")
+      : "";
+
+    const age = birthdateObj.isValid
+      ? Math.floor(todayPh.diff(birthdateObj, "years").years)
+      : "";
 
     const html = `
       <html>
       <head>
       <meta charset="UTF-8" />
+       <style>
+        @page {
+          size: A4;
+          margin: 15mm 20mm;
+        }
 
-      <style>
-      @page{
-        size:A4;
-        margin:25mm;
-      }
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
 
-      body{
-        font-family:"Segoe UI", Arial, Helvetica, sans-serif;
-        font-size:12pt;
-        line-height:1.6;
-        color:#111;
-      }
+        body {
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 10pt;
+          color: #000;
+          background: #fff;
+        }
 
-      .header{
-        text-align:center;
-        margin-bottom:30px;
-      }
+        .page-header {
+          display: flex;
+          align-items: center;
+          padding-bottom: 6px;
+        }
 
-      .header h1{
-        font-size:22pt;
-        margin:0;
-        letter-spacing:1px;
-      }
+        .header-left {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
 
-      .subtitle{
-        font-size:11pt;
-        color:#555;
-      }
+        .header-right {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
 
-      .section{
-        margin-bottom:32px;
-      }
+        .header-line {
+          border: none;
+          height: 3px;
+          background-color: #2e6b2e;
+          margin: 0 0 10px 0;
+        }
 
-      .section-title{
-        font-size:14pt;
-        font-weight:bold;
-        border-bottom:2px solid #333;
-        padding-bottom:4px;
-        margin-bottom:10px;
-      }
+        .logo-group {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
 
-      .meta{
-        display:grid;
-        grid-template-columns:180px 1fr;
-        gap:6px 10px;
-      }
+        .logo-img {
+          width: 52px;
+          height: 52px;
+          object-fit: contain;
+        }
 
-      .meta-label{
-        font-weight:bold;
-      }
+        .logo-divider {
+          width: 3px;
+          align-self: stretch;
+          background-color: #2e6b2e;
+          border-radius: 2px;
+          flex-shrink: 0;
+        }
 
-      .meta-value{
-        border-bottom:1px solid #ddd;
-        padding-bottom:2px;
-      }
+        .institution-info {
+          text-align: center;
+          flex: 1;
+        }
 
-      .content-box{
-        border:1px solid #ddd;
-        padding:12px;
-        min-height:120px;
-        white-space:pre-wrap;
-        text-align:justify;
-      }
+        .institution-info .republic {
+          font-size: 8pt;
+          color: #333;
+        }
 
-      .footer{
-        position:fixed;
-        bottom:15mm;
-        left:0;
-        right:0;
-        text-align:center;
-        font-size:9pt;
-        color:#777;
-      }
+        .institution-info .college-name {
+          font-size: 11pt;
+          font-weight: bold;
+          letter-spacing: 0.5px;
+        }
 
-      .footer hr{
-        border:none;
-        border-top:1px solid #ccc;
-        margin-bottom:6px;
-      }
+        .institution-info .office-name {
+          font-size: 8pt;
+          color: #333;
+        }
+
+        .form-ref {
+          font-size: 7.5pt;
+          text-align: right;
+          color: #333;
+          line-height: 1.5;
+          flex-shrink: 0;
+        }
+
+        .report-title {
+          text-align: center;
+          font-size: 13pt;
+          font-weight: bold;
+          letter-spacing: 0.5px;
+          margin: 8px 0;
+          text-decoration: underline;
+        }
+        .client-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 12px;
+        }
+
+        .client-table th {
+          background-color: #2e6b2e;
+          color: #fff;
+          text-align: left;
+          padding: 5px 8px;
+          font-size: 10pt;
+          font-weight: bold;
+          letter-spacing: 0.5px;
+        }
+
+        .client-table td {
+          border: 1px solid #999;
+          padding: 5px 8px;
+          vertical-align: top;
+          font-size: 9.5pt;
+        }
+
+        .client-table .label {
+          font-weight: bold;
+        }
+
+        .field-value {
+          border-bottom: 1px solid #555;
+          display: inline-block;
+          min-width: 140px;
+          padding-bottom: 1px;
+        }
+
+        .mode-cell {
+          vertical-align: top;
+        }
+
+        .checkbox-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 4px;
+          margin-bottom: 3px;
+          font-size: 9pt;
+        }
+
+        .checkbox {
+          width: 10px;
+          height: 10px;
+          border: 1px solid #333;
+          display: inline-block;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .checkbox.checked {
+          background: #000;
+        }
+
+        .section {
+          margin-bottom: 10px;
+        }
+
+        .section-label {
+          font-weight: bold;
+          font-size: 10pt;
+          margin-bottom: 4px;
+        }
+
+        .section-body {
+          font-size: 9.5pt;
+          min-height: 18px;
+          padding: 2px 0;
+          white-space: pre-wrap;
+          text-align: justify;
+        }
+
+        .case-formulation {
+          margin-bottom: 10px;
+        }
+
+        .cf-item {
+          margin-bottom: 8px;
+          font-size: 9.5pt;
+          text-align: justify;
+        }
+
+        .cf-item .cf-title {
+          font-weight: bold;
+        }
+
+        .cf-content {
+          margin-left: 20px;
+          margin-top: 3px;
+          min-height: 16px;
+          white-space: pre-wrap;
+        }
+
+        .status-badge {
+          display: inline-block;
+          background-color: #2e6b2e;
+          color: #fff;
+          padding: 2px 10px;
+          font-size: 9pt;
+          font-weight: bold;
+          border-radius: 2px;
+          margin-top: 4px;
+        }
+
+        .sig-block {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 24px;
+          font-size: 9.5pt;
+        }
+
+        .sig-col {
+          width: 45%;
+        }
+
+        .sig-col .sig-label {
+          margin-bottom: 20px;
+        }
+
+        .sig-col .sig-name {
+          font-weight: bold;
+          border-top: 1px solid #333;
+          padding-top: 3px;
+          margin-top: 2px;
+        }
+
+        .sig-col .sig-title {
+          font-size: 9pt;
+        }
+
+        .footer {
+          position: fixed;
+          bottom: 10mm;
+          left: 0;
+          right: 0;
+          text-align: center;
+          font-size: 7.5pt;
+          color: #555;
+        }
+
+        .confidential-stamp {
+          position: fixed;
+          top: 50mm;
+          left: 50%;
+          transform: translateX(-50%) rotate(-30deg);
+          font-size: 52pt;
+          font-weight: bold;
+          color: rgba(180,200,180,0.18);
+          letter-spacing: 6px;
+          pointer-events: none;
+          white-space: nowrap;
+        }
+
+        hr.thin {
+          border: none;
+          border-top: 1px solid #aaa;
+          margin: 6px 0;
+        }
       </style>
       </head>
-
       <body>
 
-      <div class="header">
-        <h1>Counseling Case Report</h1>
-        <div class="subtitle">Confidential Counseling Documentation</div>
-      </div>
+      <div class="confidential-stamp">CONFIDENTIAL</div>
 
-      <div class="section">
-        <div class="section-title">Client Information</div>
-
-        <div class="meta">
-
-          <div class="meta-label">Case ID</div>
-          <div class="meta-value">${c.case_id}</div>
-
-          <div class="meta-label">Status</div>
-          <div class="meta-value">${c.status_name || "Unknown"}</div>
-
-          <div class="meta-label">Client Name</div>
-          <div class="meta-value">${fullName || "N/A"}</div>
-
-          <div class="meta-label">Gender</div>
-          <div class="meta-value">${c.gender || "N/A"}</div>
-
-          <div class="meta-label">Request type</div>
-          <div class="meta-value">${c.type || "N/A"}</div>
-
-          ${c.type === "referred" ? `<div class="meta-label">Referred by</div>
-          <div class="meta-value">${c.referred_by || "N/A"}</div>` : ''}
-
-          <div class="meta-label">Contact No.</div>
-          <div class="meta-value">${c.contact_number || "N/A"}</div>
-
-          <div class="meta-label">Age</div>
-          <div class="meta-value">${age || "N/A"}</div>
-
-          <div class="meta-label">Student ID</div>
-          <div class="meta-value">${c.public_id || "N/A"}</div>
-
-          <div class="meta-label">Course</div>
-          <div class="meta-value">${c.course || "N/A"}</div>
-
-          <div class="meta-label">Year Level</div>
-          <div class="meta-value">${c.year_level || "N/A"}</div>
-
-          <div class="meta-label">Section</div>
-          <div class="meta-value">${c.section || "N/A"}</div>
-
-          <div class="meta-label">Reason for Counseling</div>
-          <div class="meta-value">${decryptCaseField(c.reason) || "Not specified"}</div>
-
+      <div class="page-header">
+        <div class="header-left">
+          <div class="logo-group">
+            <img src="assests/images/bagongpilipinas.png" alt="Bagong Pilipinas" class="logo-img">
+            <img src="assests/images/tagaytaycityseal.png" alt="City Seal" class="logo-img">
+            <img src="assests/images/counselinglogo.png" alt="Counseling Logo" class="logo-img">
+            <img src="assests/images/citycollegelogo.png" alt="CCT Logo" class="logo-img">
+          </div>
+        </div>
+        <div class="logo-divider"></div>
+        <div class="header-right">
+          <div class="institution-info">
+            <div class="republic">Republic of the Philippines<br>City of Tagaytay</div>
+            <div class="college-name">CITY COLLEGE OF TAGAYTAY</div>
+            <div class="office-name">Guidance, Counseling, Appraisal, and Psychological Services</div>
+          </div>
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Case Notes</div>
+      <hr class="header-line">
 
-        <div class="content-box">
-      ${decryptCaseField(c.notes) || "No notes were recorded for this case."}
+      <div class="form-ref">
+        <strong>Case ID:</strong> ${escapeHTML(c.case_id || "N/A")}
+        <br>OSES-GCAPC-FORM-016<br>REV02102025kbrgs
+      </div>
+
+      <div class="report-title">COUNSELING CASE REPORT</div>
+
+      <table class="client-table">
+        <tr>
+          <th colspan="2">CLIENT INFORMATION</th>
+        </tr>
+        <tr>
+          <td><span class="label">Name:</span>
+          <span class="field-value" style="min-width:220px;">${escapeHTML(fullName)}</span></td>
+          <td><span class="label">Student ID:</span>
+          <span class="field-value">${escapeHTML(c.public_id)}</span></td>
+        </tr>
+        <tr>
+          <td><span class="label">Program:</span>
+          <span class="field-value">${escapeHTML(c.course)}</span></td>
+          <td>
+            <span class="label">Section:</span>
+            <span class="field-value">${escapeHTML(c.section || "")}</span>
+
+            <span class="label">Age:</span>
+            <span class="field-value">${escapeHTML(age)}</span>
+
+            <span class="label">Birthdate:</span>
+            <span class="field-value">${escapeHTML(birthdateFormatted)}</span>
+          </td>
+        </tr>
+        <tr>
+          <td><span class="label">Gender:</span>
+          <span class="field-value">${escapeHTML(c.gender)}</span></td>
+          <td>
+            <span class="label">Contact No:</span>
+            <span class="field-value">${escapeHTML(c.contact_number || "")}</span>
+
+            <span class="label">Email:</span>
+            <span class="field-value">${escapeHTML(c.email || "")}</span>
+          </td>
+        </tr>
+      </table>
+
+      <div class="section">
+        <div class="section-label">Case Notes</div>
+        <div class="section-body">
+          ${escapeHTML(decryptCaseField(c.notes) || "No notes were recorded for this case.")}
         </div>
       </div>
 
-      <div class="section">
-        <div class="section-title">Counselor Assessment</div>
+      <hr class="thin">
 
-        <div class="content-box">
-      ${decryptCaseField(c.assessment) || "No assessment was recorded."}
+      <div class="section">
+        <div class="section-label">Counselor Assessment</div>
+        <div class="section-body">
+          ${escapeHTML(decryptCaseField(c.assessment) || "No assessment was recorded.")}
+        </div>
+      </div>
+
+      <hr class="thin">
+
+      <div class="section">
+        <div class="section-label">CLIENT STATUS</div>
+        <div>
+          <span class="status-badge">${escapeHTML(c.status_name || "Unknown")}</span>
         </div>
       </div>
 
@@ -207,28 +426,46 @@ const generateCaseReport = async ({ case_ids, connection = pool }) => {
         c.status_id === STATUS.TERMINATED
           ? `
       <div class="section">
-        <div class="section-title">Session Outcome</div>
-
-        <div class="content-box">
-      ${decryptCaseField(c.outcome) || "No outcome was recorded for this ongoing case."}
+        <div class="section-label">Session Outcome</div>
+        <div class="section-body">
+          ${escapeHTML(decryptCaseField(c.outcome) || "No outcome was recorded.")}
         </div>
       </div>
       `
           : ``
       }
 
+      <div class="sig-block">
+        <div class="sig-col">
+          <div class="sig-label">Prepared by</div>
+          <br><br>
+          <div class="sig-name">&nbsp;</div>
+          <div class="sig-title">School Counselor</div>
+        </div>
+        <div class="sig-col" style="text-align:right;">
+          <div class="sig-label">Noted by</div>
+          <br><br>
+          <div class="sig-name">Ma. Kimberlei Fae I. Besmont, RGC</div>
+          <div class="sig-title">Guidance Director</div>
+        </div>
+      </div>
+
       <div class="footer">
-        <hr/>
-        Confidential • For Counseling Use Only
+        <em>Counseling Case Report 2026.docx</em>
       </div>
 
       </body>
       </html>
-      `;
+    `;
 
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf_buffer = await page.pdf({ format: "A4", printBackground: true });
+
+    const pdf_buffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+    });
+
     await page.close();
 
     case_buffers.push({
@@ -301,107 +538,396 @@ const generateSessionReport = async ({
   const session_buffers = {};
 
   for (const c of case_rows) {
+    const dateObj = DateTime.fromJSDate(new Date(c.from), {
+      zone: "Asia/Manila",
+    });
+
+    const formattedDate = dateObj.isValid
+      ? dateObj.toFormat("MMMM dd, yyyy")
+      : "";
+
     const html = `
-      <html>
+    <html>
       <head>
-        <meta charset="UTF-8" />
-        <style>
-          @page { size: A4; margin: 25mm; }
-          body { font-family: Arial, Helvetica, sans-serif; font-size: 12pt; line-height: 1.5; color: #000; }
-          h1, h2 { text-align: center; margin-bottom: 15px; }
-          h1 { font-size: 18pt; letter-spacing: 0.5px; }
-          h2 { font-size: 14pt; }
-          .meta, .section { margin-bottom: 25px; }
-          .meta-row { display: table; width: 100%; margin-bottom: 8px; }
-          .meta-label { display: table-cell; width: 160px; font-weight: bold; vertical-align: top; }
-          .meta-value { display: table-cell; }
-          .section-title { font-weight: bold; font-size: 13pt; margin-bottom: 8px; border-bottom: 1px solid #444; padding-bottom: 3px; }
-          .content-box { white-space: pre-wrap; text-align: justify; border: 1px solid #ccc; padding: 10px; background-color: #f9f9f9; }
-          .footer { position: fixed; bottom: 20mm; left: 0; right: 0; text-align: center; font-size: 9pt; color: #666; }
-        </style>
-      </head>
-      <body>
-        <h1>Session Report</h1>
-
-        <div class="meta">
-          <div class="meta-row">
-            <div class="meta-label">Case ID:</div>
-            <div class="meta-value">${c.case_id}</div>
-          </div>
-
-          <div class="meta-row">
-            <div class="meta-label">Session ID:</div>
-            <div class="meta-value">${c.session_id}</div>
-          </div>
-
-           <div class="meta-row">
-            <div class="meta-label">Session Type:</div>
-            <div class="meta-value">${c.session_type}</div>
-          </div>
-
-             <div class="meta-row">
-            <div class="meta-label">Mode:</div>
-            <div class="meta-value">${c.mode}</div>
-          </div>
-
-          <div class="meta-row">
-            <div class="meta-label">Date:</div>
-            <div class="meta-value">${new Date(c.from).toLocaleDateString()}</div>
-          </div>
-
-          <div class="meta-row">
-            <div class="meta-label">Status:</div>
-            <div class="meta-value">${c.status_name || "Unknown"}</div>
-          </div>
-        </div>
-
-        <div class="section">
-          <div class="section-title">Notes</div>
-          <div class="content-box">
-            ${decryptCaseField(c.notes) || "No notes were recorded for this session."}
-          </div>
-        </div>
-
-        <div class="section">
-          <div class="section-title">Assessment</div>
-          <div class="content-box">
-            ${decryptCaseField(c.assessment) || "No assessment was recorded for this session."}
-          </div>
-        </div>
-
-        <div class="section">
-          <div class="section-title">Intervention Plan</div>
-          <div class="content-box">
-            ${decryptCaseField(c.intervention_plan) || "No intervention plan was recorded for this session."}
-          </div>
-        </div>
-
-        ${
-          c.status_id === STATUS.TERMINATED
-            ? `
-          <div class="section">
-            <div class="section-title">Session Outcome</div>
-            <div class="content-box">
-              ${c.outcome || "No outcome was recorded for this ongoing session."}
-            </div>
-          </div>
-          `
-            : ``
+      <meta charset="UTF-8" />
+       <style>
+        @page {
+          size: A4;
+          margin: 15mm 20mm;
         }
 
-        <div class="footer">
-          Confidential • For Counseling Use Only
+        * {
+          box-sizing: border-box;
+          margin: 0;
+          padding: 0;
+        }
+
+        body {
+          font-family: Arial, Helvetica, sans-serif;
+          font-size: 10pt;
+          color: #000;
+          background: #fff;
+        }
+        .page-header {
+          display: flex;
+          align-items: center;
+          padding-bottom: 6px;
+        }
+
+        .header-left {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .header-right {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+
+        .header-line {
+          border: none;
+          height: 3px;
+          background-color: #2e6b2e;
+          margin: 0 0 10px 0;
+        }
+
+        .logo-group {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+        }
+
+        .logo-img {
+          width: 52px;
+          height: 52px;
+          object-fit: contain;
+        }
+
+        .logo-divider {
+          width: 3px;
+          align-self: stretch;
+          background-color: #2e6b2e;
+          border-radius: 2px;
+          flex-shrink: 0;
+        }
+
+        .institution-info {
+          text-align: center;
+          flex: 1;
+        }
+
+        .institution-info .republic {
+          font-size: 8pt;
+          color: #333;
+        }
+
+        .institution-info .college-name {
+          font-size: 11pt;
+          font-weight: bold;
+          letter-spacing: 0.5px;
+        }
+
+        .institution-info .office-name {
+          font-size: 8pt;
+          color: #333;
+        }
+
+        .form-ref {
+          font-size: 7.5pt;
+          text-align: right;
+          color: #333;
+          line-height: 1.5;
+          flex-shrink: 0;
+        }
+
+        .report-title {
+          text-align: center;
+          font-size: 13pt;
+          font-weight: bold;
+          letter-spacing: 0.5px;
+          margin: 8px 0;
+          text-decoration: underline;
+        }
+        .client-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin-bottom: 12px;
+        }
+
+        .client-table th {
+          background-color: #2e6b2e;
+          color: #fff;
+          text-align: left;
+          padding: 5px 8px;
+          font-size: 10pt;
+          font-weight: bold;
+          letter-spacing: 0.5px;
+        }
+
+        .client-table td {
+          border: 1px solid #999;
+          padding: 5px 8px;
+          vertical-align: top;
+          font-size: 9.5pt;
+        }
+
+        .client-table .label {
+          font-weight: bold;
+        }
+
+        .field-value {
+          border-bottom: 1px solid #555;
+          display: inline-block;
+          min-width: 140px;
+          padding-bottom: 1px;
+        }
+
+        .checkbox-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 4px;
+          margin-bottom: 3px;
+          font-size: 9pt;
+        }
+
+        .checkbox {
+          width: 10px;
+          height: 10px;
+          border: 1px solid #333;
+          display: inline-block;
+          flex-shrink: 0;
+          margin-top: 2px;
+        }
+
+        .checkbox.checked {
+          background: #000;
+        }
+        .section {
+          margin-bottom: 10px;
+        }
+
+        .section-label {
+          font-weight: bold;
+          font-size: 10pt;
+          margin-bottom: 4px;
+        }
+
+        .section-body {
+          font-size: 9.5pt;
+          min-height: 18px;
+          padding: 2px 0;
+          white-space: pre-wrap;
+          text-align: justify;
+        }
+        .status-badge {
+          display: inline-block;
+          background-color: #2e6b2e;
+          color: #fff;
+          padding: 2px 10px;
+          font-size: 9pt;
+          font-weight: bold;
+          border-radius: 2px;
+          margin-top: 4px;
+        }
+
+        .sig-block {
+          display: flex;
+          justify-content: space-between;
+          margin-top: 24px;
+          font-size: 9.5pt;
+        }
+
+        .sig-col {
+          width: 45%;
+        }
+
+        .sig-col .sig-label {
+          margin-bottom: 20px;
+        }
+
+        .sig-col .sig-name {
+          font-weight: bold;
+          border-top: 1px solid #333;
+          padding-top: 3px;
+          margin-top: 2px;
+        }
+
+        .sig-col .sig-title {
+          font-size: 9pt;
+        }
+        .footer {
+          position: fixed;
+          bottom: 10mm;
+          left: 0;
+          right: 0;
+          text-align: center;
+          font-size: 7.5pt;
+          color: #555;
+        }
+
+        .confidential-stamp {
+          position: fixed;
+          top: 50mm;
+          left: 50%;
+          transform: translateX(-50%) rotate(-30deg);
+          font-size: 52pt;
+          font-weight: bold;
+          color: rgba(180,200,180,0.18);
+          letter-spacing: 6px;
+          pointer-events: none;
+          white-space: nowrap;
+        }
+
+        hr.thin {
+          border: none;
+          border-top: 1px solid #aaa;
+          margin: 6px 0;
+        }
+      </style>
+      </head>
+      <body>
+
+      <div class="confidential-stamp">CONFIDENTIAL</div>
+
+     <div class="page-header">
+        <div class="header-left">
+          <div class="logo-group">
+            <img src="assests/images/bagongpilipinas.png" alt="Bagong Pilipinas" class="logo-img">
+            <img src="assests/images/tagaytaycityseal.png" alt="City Seal" class="logo-img">
+            <img src="assests/images/counselinglogo.png" alt="Counseling Logo" class="logo-img">
+            <img src="assests/images/citycollegelogo.png" alt="CCT Logo" class="logo-img">
+          </div>
         </div>
+        <div class="logo-divider"></div>
+        <div class="header-right">
+          <div class="institution-info">
+            <div class="republic">Republic of the Philippines<br>City of Tagaytay</div>
+            <div class="college-name">CITY COLLEGE OF TAGAYTAY</div>
+            <div class="office-name">Guidance, Counseling, Appraisal, and Psychological Services</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="header-line">
+
+      <div class="form-ref">
+        <strong>Session ID:</strong> ${escapeHTML(c.session_id || "N/A")}
+        <br>CGCAPS-FORM-025<br>REV0220126kbrgs
+      </div>
+
+      <div class="report-title">COUNSELING SESSION REPORT</div>
+
+      <table class="client-table">
+        <tr>
+          <th colspan="2">CLIENT INFORMATION</th>
+        </tr>
+        <tr>
+          <td style="width:50%">
+            <span class="label">Date of Counseling:</span><br>
+            <span class="field-value">${escapeHTML(formattedDate)}</span>
+          </td>
+          <td style="width:50%">
+            <span class="label">Session:</span>
+            <span style="margin-left:6px;">
+              ${escapeHTML(c.session_type || "")}
+            </span>
+
+            <span class="label">Mode:</span>
+            <span style="margin-left:6px;">
+              ${escapeHTML(c.mode || "")}
+            </span>
+          </td>
+        </tr>
+      </table>
+
+      <div class="section">
+        <div class="section-label">Notes</div>
+        <div class="section-body">
+          ${escapeHTML(decryptCaseField(c.notes) || "No notes were recorded for this session.")}
+        </div>
+      </div>
+
+      <hr class="thin">
+
+      <div class="section">
+        <div class="section-label">Assessment</div>
+        <div class="section-body">
+          ${escapeHTML(decryptCaseField(c.assessment) || "No assessment was recorded for this session.")}
+        </div>
+      </div>
+
+      <hr class="thin">
+
+      <div class="section">
+        <div class="section-label">Intervention Plan</div>
+        <div class="section-body">
+          ${escapeHTML(decryptCaseField(c.intervention_plan) || "No intervention plan was recorded for this session.")}
+        </div>
+      </div>
+
+      <hr class="thin">
+
+      <div class="section">
+        <div class="section-label">CLIENT STATUS</div>
+        <div>
+          <span class="status-badge">${escapeHTML(c.status_name || "Unknown")}</span>
+        </div>
+      </div>
+
+      ${
+        c.status_id === STATUS.TERMINATED
+          ? `
+      <div class="section">
+        <div class="section-label">Session Outcome</div>
+        <div class="section-body">
+          ${escapeHTML(decryptCaseField(c.outcome) || "No outcome was recorded for this session.")}
+        </div>
+      </div>
+      `
+          : ``
+      }
+
+      <div class="sig-block">
+        <div class="sig-col">
+          <div class="sig-label">Prepared by</div>
+          <br><br>
+          <div class="sig-name">&nbsp;</div>
+          <div class="sig-title">School Counselor</div>
+        </div>
+
+        <div class="sig-col" style="text-align:right;">
+          <div class="sig-label">Noted by</div>
+          <br><br>
+          <div class="sig-name">Ma. Kimberlei Fae I. Besmont, RGC</div>
+          <div class="sig-title">Guidance Director</div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <em>Counseling Session Report 2025.docx</em>
+      </div>
+
       </body>
       </html>
-      `;
+    `;
 
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    const pdf_buffer = await page.pdf({ format: "A4", printBackground: true });
+
+    const pdf_buffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+    });
+
     await page.close();
 
     if (!session_buffers[c.case_id]) session_buffers[c.case_id] = [];
+
     session_buffers[c.case_id].push({
       pdf_buffer,
       session_id: c.session_id,
@@ -437,11 +963,12 @@ const generateIntakeQuestionnaireReport = async ({
         ON client.account_id = cr.client_id
       WHERE cc.case_id IN (?)
     `,
-    [case_ids],
+    [case_ids]
   );
 
   const case_answer_sheet = {};
 
+  // Organize questions per case
   question_rows.forEach((q) => {
     if (!case_answer_sheet[q.case_id]) {
       case_answer_sheet[q.case_id] = {
@@ -471,84 +998,30 @@ const generateIntakeQuestionnaireReport = async ({
         <head>
           <meta charset="UTF-8" />
           <style>
-            @page {
-              size: A4;
-              margin: 20mm;
-            }
-
-            body {
-              font-family: Arial, Helvetica, sans-serif;
-              font-size: 11pt;
-              color: #202124;
-              background: #fff;
-            }
-
-            h1 {
-              text-align: center;
-              font-size: 18pt;
-              margin-bottom: 10px;
-            }
-
-            .subtitle {
-              text-align: center;
-              font-size: 10pt;
-              color: #5f6368;
-              margin-bottom: 25px;
-            }
-
-            .meta {
-              margin-bottom: 30px;
-            }
-
-            .meta div {
-              margin-bottom: 6px;
-            }
-
-            .label {
-              font-weight: bold;
-            }
-
-            .question-block {
-              margin-bottom: 20px;
-              padding-bottom: 12px;
-              border-bottom: 1px solid #dadce0;
-            }
-
-            .question {
-              font-weight: bold;
-              margin-bottom: 6px;
-            }
-
-            .answer {
-              padding: 8px 10px;
-              background: #f8f9fa;
-              border-radius: 4px;
-              white-space: pre-wrap;
-            }
-
-            .footer {
-              position: fixed;
-              bottom: 15mm;
-              left: 0;
-              right: 0;
-              text-align: center;
-              font-size: 9pt;
-              color: #70757a;
-            }
+            @page { size: A4; margin: 20mm; }
+            body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #202124; background: #fff; }
+            h1 { text-align: center; font-size: 18pt; margin-bottom: 10px; }
+            .subtitle { text-align: center; font-size: 10pt; color: #5f6368; margin-bottom: 25px; }
+            .meta { margin-bottom: 30px; }
+            .meta div { margin-bottom: 6px; }
+            .label { font-weight: bold; }
+            .question-block { margin-bottom: 20px; padding-bottom: 12px; border-bottom: 1px solid #dadce0; }
+            .question { font-weight: bold; margin-bottom: 6px; }
+            .answer { padding: 8px 10px; background: #f8f9fa; border-radius: 4px; white-space: pre-wrap; }
+            .footer { position: fixed; bottom: 15mm; left: 0; right: 0; text-align: center; font-size: 9pt; color: #70757a; }
           </style>
         </head>
-
         <body>
           <h1>Intake Questionnaire</h1>
           <div class="subtitle">Confidential Counseling Record</div>
 
           <div class="meta">
-            <div><span class="label">Case ID:</span> ${c.case_id}</div>
+            <div><span class="label">Case ID:</span> ${escapeHTML(c.case_id)}</div>
             <div>
               <span class="label">Client Name:</span>
-              ${c.client.given_name}
-              ${c.client.middle_name || ""}
-              ${c.client.last_name}
+              ${escapeHTML(c.client.given_name)}
+              ${escapeHTML(c.client.middle_name || "")}
+              ${escapeHTML(c.client.last_name)}
             </div>
           </div>
 
@@ -556,10 +1029,10 @@ const generateIntakeQuestionnaireReport = async ({
             .map(
               (q, i) => `
                 <div class="question-block">
-                  <div class="question">${i + 1}. ${q.question}</div>
-                  <div class="answer">${decryptCaseField(q.answer) || "—"}</div>
+                  <div class="question">${i + 1}. ${escapeHTML(q.question)}</div>
+                  <div class="answer">${escapeHTML(decryptCaseField(q.answer) || "—")}</div>
                 </div>
-              `,
+              `
             )
             .join("")}
 
@@ -583,5 +1056,4 @@ const generateIntakeQuestionnaireReport = async ({
 
   return intake_buffers;
 };
-
 module.exports = { generateCaseReport };

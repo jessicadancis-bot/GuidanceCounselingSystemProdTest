@@ -1268,7 +1268,8 @@ const createCounselingCaseSession = async ({
       [case_id],
     );
 
-    const total_session = session_row_count?.length || 0;
+
+    const total_session = session_row_count?.[0]?.total_session || 0;
 
     const meeting_date_db = meeting_date_ph.toFormat("yyyy-LL-dd HH:mm:ss");
     const session_end_db = session_end_ph.toFormat("yyyy-LL-dd HH:mm:ss");
