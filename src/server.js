@@ -39,7 +39,7 @@ server.use(
     credentials: true,
   })
 );
-server.set("trust proxy", "loopback");
+server.set("trust proxy", 1);
 
 // Serve frontend static files
 server.use(express.static(path.join(__dirname, "..", "public")));
