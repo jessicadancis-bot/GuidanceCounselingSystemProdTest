@@ -45,7 +45,6 @@ const updateAccountsHandler = async (req, res, next) => {
     const results = await updateAccount({
       performer_id: req.user?.accountId,
       account_id: req.params?.account_id,
-      email: req.body?.email,
       department: req.body?.department,
       course: req.body?.course,
       year_level: req.body?.year_level,
