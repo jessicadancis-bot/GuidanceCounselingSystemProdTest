@@ -717,7 +717,7 @@ const updateAccount = async ({
     WHERE u.account_id = ? ${affected_roles.length > 0 ? ` AND a.role IN (${affected_roles.map(() => "?").join(",")})` : ""}
     LIMIT 1
       `,
-    [performer_id, account_id, ...affected_roles],
+    [account_id, ...affected_roles],
   );
 
   const account = account_rows[0];
